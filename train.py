@@ -53,15 +53,38 @@ class GLU3DDataset(Dataset):
 
 def stl_to_voxel_tensor(stl_path, grid_size=64):
     mesh = trimesh.load(stl_path)
+    stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=bool)
     
-    fixed_pitch = 1.0 / float(grid_size)
-    voxels = mesh.voxelized(pitch=fixed_pitch)
-    voxel_matrix = voxels.matrix.astype(np.float32)
+    bounds = np.linspace(0.0, 1.0, grid_size)
+    x_coords, y_coords = np.meshgrid(bounds, bounds, indexing='ij')
     
-    padded_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
-    min_x, min_y, min_z = map(min, zip(voxel_matrix.shape, (grid_size, grid_size, grid_size)))
-    padded_matrix[:min_x, :min_y, :min_z] = voxel_matrix[:min_x, :min_y, :min_z]
-    return torch.tensor(padded_matrix).unsqueeze(0)
+    ray_origins = np.vstack((x_coords.ravel(), y_coords.ravel(), np.full_like(x_coords.ravel(), -0.1))).T
+    ray_directions = np.tile([0, 0, 1], (len(ray_origins), 1))
+    
+    intersector = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
+    locations, index_ray, index_tri = intersector.intersects_location(
+        ray_origins=ray_origins, 
+        ray_directions=ray_directions, 
+        multiple_hits=True
+    )
+    
+    for ray_idx in range(len(ray_origins)):
+        hit_mask = (index_ray == ray_idx)
+        if not np.any(hit_mask):
+            continue
+            
+        z_hits = locations[hit_mask, 2]
+        z_hits = np.sort(z_hits)
+        
+        x_pixel = int(round(ray_origins[ray_idx, 0] * (grid_size - 1)))
+        y_pixel = int(round(ray_origins[ray_idx, 1] * (grid_size - 1)))
+        
+        for i in range(0, len(z_hits) - 1, 2):
+            z_start = max(0, min(grid_size - 1, int(round(z_hits[i] * (grid_size - 1)))))
+            z_end = max(0, min(grid_size - 1, int(round(z_hits[i+1] * (grid_size - 1)))))
+            stl_matrix[x_pixel, y_pixel, z_start:z_end + 1] = True
+
+    return torch.tensor(stl_matrix.astype(np.float32)).unsqueeze(0)
 
 if __name__ == "__main__":
     GRID_RESOLUTION = 64
@@ -73,7 +96,7 @@ if __name__ == "__main__":
     print(f"Using computing hardware: {device}")
     
     sample_h5 = os.path.join("data", "h5_files", "test.h5")
-    sample_stl = os.path.join("data", "stl_files", "sample_lattice_2.stl")
+    sample_stl = os.path.join("data", "stl_files", "standardized_lattice.stl")
     
     if os.path.exists(sample_h5):
         print("\n--- PHASE 1: Splitting Dataset ---")
