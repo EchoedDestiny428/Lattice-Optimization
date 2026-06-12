@@ -4,7 +4,7 @@ import trimesh
 import numpy as np
 
 h5_path = os.path.join("data", "h5_files", "test.h5")
-output_stl_path = "h5_index0_true_lattice.stl"
+output_stl_path = "converted_lattice.stl"
 
 if os.path.exists(h5_path):
     print(f"Reading dataset from: {h5_path}")
