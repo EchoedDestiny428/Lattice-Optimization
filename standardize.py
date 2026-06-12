@@ -15,7 +15,7 @@ def standardize_stl(input_path, output_path):
     
     # 1. Uniformly scale so the maximum dimension fits the 0.95 footprint
     max_side = mesh.extents.max()
-    scale_factor = 0.95 / max_side * 0.963
+    scale_factor = 0.95 / max_side * 0.985
     mesh.apply_scale(scale_factor)
     
     # 2. CRITICAL FIX: Calculate center based strictly on spatial bounding box corners
