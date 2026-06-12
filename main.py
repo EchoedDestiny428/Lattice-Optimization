@@ -15,6 +15,9 @@ if os.path.exists(h5_path):
     normalization_scale = 1.0 / voxel_grid.shape[0] 
     mesh.apply_scale(normalization_scale)
     
+    extraction_compensation = 61.42 / 64.0
+    mesh.apply_scale(extraction_compensation)
+    
     target_center = np.array([0.5, 0.5, 0.5])
     translation_vector = target_center - mesh.center_mass
     mesh.apply_translation(translation_vector)

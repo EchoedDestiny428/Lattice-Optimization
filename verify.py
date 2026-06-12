@@ -21,12 +21,40 @@ if os.path.exists(custom_stl_path):
     mesh = trimesh.load(custom_stl_path)
     
     grid_size = 64
-    lin_space = np.linspace(0.0, 1.0, grid_size)
-    x_grid, y_grid, z_grid = np.meshgrid(lin_space, lin_space, lin_space, indexing='ij')
-    grid_points = np.vstack((x_grid.ravel(), y_grid.ravel(), z_grid.ravel())).T
+    stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=bool)
     
-    contains = mesh.contains(grid_points)
-    stl_matrix = contains.reshape((grid_size, grid_size, grid_size)).astype(np.float32)
+    bounds = np.linspace(0.0, 1.0, grid_size)
+    x_coords, y_coords = np.meshgrid(bounds, bounds, indexing='ij')
+    
+    ray_origins = np.vstack((x_coords.ravel(), y_coords.ravel(), np.full_like(x_coords.ravel(), -0.1))).T
+    ray_directions = np.tile([0, 0, 1], (len(ray_origins), 1))
+    
+    intersector = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
+    
+    # intersects_location returns: (3D hit locations, ray indices that hit, triangle indices hit)
+    locations, index_ray, index_tri = intersector.intersects_location(
+        ray_origins=ray_origins, 
+        ray_directions=ray_directions, 
+        multiple_hits=True
+    )
+    
+    for ray_idx in range(len(ray_origins)):
+        hit_mask = (index_ray == ray_idx)
+        if not np.any(hit_mask):
+            continue
+            
+        z_hits = locations[hit_mask, 2]
+        z_hits = np.sort(z_hits)
+        
+        x_pixel = int(round(ray_origins[ray_idx, 0] * (grid_size - 1)))
+        y_pixel = int(round(ray_origins[ray_idx, 1] * (grid_size - 1)))
+        
+        for i in range(0, len(z_hits) - 1, 2):
+            z_start = max(0, min(grid_size - 1, int(round(z_hits[i] * (grid_size - 1)))))
+            z_end = max(0, min(grid_size - 1, int(round(z_hits[i+1] * (grid_size - 1)))))
+            stl_matrix[x_pixel, y_pixel, z_start:z_end + 1] = True
+
+    stl_matrix = stl_matrix.astype(np.float32)
     
     print(f"\nCustom STL Physical Dimensions: {mesh.extents}")
     print(f"Custom STL Solid Voxels:        {int(np.sum(stl_matrix))}")
