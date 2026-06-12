@@ -55,7 +55,7 @@ def stl_to_voxel_tensor(stl_path, grid_size=64):
     mesh = trimesh.load(stl_path)
     stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     
-    # Use the identical 0.0 to 1.0 bounding domain from your working verify.py
+    # Strictly aligned 0.0 to 1.0 bounding matrix
     bounds = np.linspace(0.0, 1.0, grid_size)
     x_coords, y_coords = np.meshgrid(bounds, bounds, indexing='ij')
     
@@ -64,33 +64,24 @@ def stl_to_voxel_tensor(stl_path, grid_size=64):
     
     intersector = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
     locations, index_ray, _ = intersector.intersects_location(
-        ray_origins=ray_origins, 
-        ray_directions=ray_directions, 
-        multiple_hits=True
+        ray_origins=ray_origins, ray_directions=ray_directions, multiple_hits=True
     )
     
     for ray_idx in range(len(ray_origins)):
         hit_mask = (index_ray == ray_idx)
-        if not np.any(hit_mask):
+        if not np.any(hit_mask): 
             continue
             
-        z_hits = locations[hit_mask, 2]
-        z_hits = np.sort(z_hits)
-        
+        z_hits = np.sort(locations[hit_mask, 2])
         x_pixel = int(round(ray_origins[ray_idx, 0] * (grid_size - 1)))
         y_pixel = int(round(ray_origins[ray_idx, 1] * (grid_size - 1)))
         
+        # Inclusive boundary pairing to capture edge thickness accurately
         for i in range(0, len(z_hits) - 1, 2):
             z_start = max(0, min(grid_size - 1, int(round(z_hits[i] * (grid_size - 1)))))
             z_end = max(0, min(grid_size - 1, int(round(z_hits[i+1] * (grid_size - 1)))))
             stl_matrix[x_pixel, y_pixel, z_start:z_end + 1] = 1.0
 
-    print("\n--- PRODUCTION STL VOXELIZER ---")
-    print(f"  * Solid Voxel Count: {int(np.sum(stl_matrix))}")
-    print(f"  * Density Ratio:     {np.sum(stl_matrix) / stl_matrix.size:.4f}")
-    print("-" * 40)
-    
-    # Returns a single-channel 4D tensor: [1, 64, 64, 64]
     return torch.tensor(stl_matrix).unsqueeze(0)
 
 
@@ -183,7 +174,7 @@ if __name__ == "__main__":
             pred_h5 = model(test_h5_input)
             
         actual_pred_h5 = pred_h5.item() * full_dataset.scale_factor
-        print(f"[H5 Index 0] Prediction: {actual_pred_h5:.4f} | Target True Value: {true_h5_val:.4f}")
+        print(f"[H5 Index 0] Prediction (Pascals): {actual_pred_h5:.4f} | Target True Value (Pascals): {true_h5_val:.4f}")
         
         if os.path.exists(sample_stl):
             test_stl_input = stl_to_voxel_tensor(sample_stl, grid_size=GRID_RESOLUTION).unsqueeze(0).to(device)
