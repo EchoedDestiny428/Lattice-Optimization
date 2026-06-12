@@ -7,9 +7,6 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import trimesh
 import numpy as np
 
-# =====================================================================
-# 1. AI BRAIN (3D Convolutional Neural Network)
-# =====================================================================
 class Lattice3DCNN(nn.Module):
     def __init__(self):
         super(Lattice3DCNN, self).__init__()
@@ -33,9 +30,6 @@ class Lattice3DCNN(nn.Module):
         x = self.regressor(x)
         return x
 
-# =====================================================================
-# 2. BATCH DATA LOADER (With Target Normalization)
-# =====================================================================
 class GLU3DDataset(Dataset):
     def __init__(self, h5_path, grid_size=64):
         self.h5_path = h5_path
@@ -59,20 +53,20 @@ class GLU3DDataset(Dataset):
 
 def stl_to_voxel_tensor(stl_path, grid_size=64):
     mesh = trimesh.load(stl_path)
-    voxels = mesh.voxelized(pitch=mesh.extents.max() / grid_size)
+    
+    fixed_pitch = 1.0 / float(grid_size)
+    voxels = mesh.voxelized(pitch=fixed_pitch)
     voxel_matrix = voxels.matrix.astype(np.float32)
+    
     padded_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     min_x, min_y, min_z = map(min, zip(voxel_matrix.shape, (grid_size, grid_size, grid_size)))
     padded_matrix[:min_x, :min_y, :min_z] = voxel_matrix[:min_x, :min_y, :min_z]
     return torch.tensor(padded_matrix).unsqueeze(0)
 
-# =====================================================================
-# 3. RUN PIPELINE WITH TRAIN / VALIDATION SPLIT
-# =====================================================================
 if __name__ == "__main__":
     GRID_RESOLUTION = 64
     BATCH_SIZE = 16
-    EPOCHS = 15  # Bumped slightly to allow better convergence
+    EPOCHS = 15  
     LEARNING_RATE = 0.001
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,11 +79,9 @@ if __name__ == "__main__":
         print("\n--- PHASE 1: Splitting Dataset ---")
         full_dataset = GLU3DDataset(sample_h5, grid_size=GRID_RESOLUTION)
         
-        # Calculate 80% train / 20% validation splits manually
         train_size = int(0.8 * len(full_dataset))
         val_size = len(full_dataset) - train_size
         
-        # Split using a fixed seed for reproducible results
         train_dataset, val_dataset = random_split(
             full_dataset, [train_size, val_size], 
             generator=torch.Generator().manual_seed(42)
@@ -107,12 +99,10 @@ if __name__ == "__main__":
         criterion = nn.MSELoss()
         optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
         
-        # Track the best validation loss to save the ultimate model
         best_val_loss = float('inf')
         best_epoch = 0
         
         for epoch in range(EPOCHS):
-            # --- TRAINING STEP ---
             model.train()
             running_train_loss = 0.0
             for inputs, targets in train_loader:
@@ -128,7 +118,6 @@ if __name__ == "__main__":
             
             epoch_train_loss = running_train_loss / len(train_dataset)
             
-            # --- VALIDATION STEP ---
             model.eval()
             running_val_loss = 0.0
             with torch.no_grad():
@@ -142,7 +131,6 @@ if __name__ == "__main__":
             
             print(f"Epoch [{epoch+1:02d}/{EPOCHS}] | Train Loss: {epoch_train_loss:.4f} | Val Loss: {epoch_val_loss:.4f}")
             
-            # CHECKPOINT LOGIC: Save weights only if validation loss improves!
             if epoch_val_loss < best_val_loss:
                 best_val_loss = epoch_val_loss
                 best_epoch = epoch + 1
@@ -151,17 +139,15 @@ if __name__ == "__main__":
             
         print(f"\nTraining complete! Best weights were captured at Epoch {best_epoch:02d}.")
         
-        # --- PHASE 3: Testing Predictions (Loading the BEST weights found) ---
         print("\nLoading best checkpoint weights for verification testing...")
         model.load_state_dict(torch.load("lattice_3dcnn_best.pth"))
-        model.eval().to("cpu")
-
+        model.eval().to(device)
         
         print("\n--- PHASE 4: Verification Tests ---")
         with h5py.File(sample_h5, 'r') as f:
             true_h5_val = f['stiffness'][0][0, 0]
         
-        test_h5_input = full_dataset[0][0].unsqueeze(0)
+        test_h5_input = full_dataset[0][0].unsqueeze(0).to(device)
         with torch.no_grad():
             pred_h5 = model(test_h5_input)
             
@@ -169,7 +155,7 @@ if __name__ == "__main__":
         print(f"[H5 Index 0] Prediction: {actual_pred_h5:.4f} | Target True Value: {true_h5_val:.4f}")
         
         if os.path.exists(sample_stl):
-            test_stl_input = stl_to_voxel_tensor(sample_stl, grid_size=GRID_RESOLUTION).unsqueeze(0)
+            test_stl_input = stl_to_voxel_tensor(sample_stl, grid_size=GRID_RESOLUTION).unsqueeze(0).to(device)
             with torch.no_grad():
                 pred_stl = model(test_stl_input)
             actual_pred_stl = pred_stl.item() * full_dataset.scale_factor
