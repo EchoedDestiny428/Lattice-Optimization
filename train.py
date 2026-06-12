@@ -79,7 +79,7 @@ if __name__ == "__main__":
     print(f"Using computing hardware: {device}")
     
     sample_h5 = os.path.join("data", "h5_files", "test.h5")
-    sample_stl = os.path.join("data", "stl_files", "sample_lattice.stl")
+    sample_stl = os.path.join("data", "stl_files", "sample_lattice_2.stl")
     
     if os.path.exists(sample_h5):
         print("\n--- PHASE 1: Splitting Dataset ---")
