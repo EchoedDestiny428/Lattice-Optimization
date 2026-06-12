@@ -53,32 +53,22 @@ class GLU3DDataset(Dataset):
 
 def stl_to_voxel_tensor(stl_path, grid_size=64):
     mesh = trimesh.load(stl_path)
-    stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=bool)
+    stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     
-    # 1. Align sampling domain to match your 0.95 standardizer footprint
-    scale_min = 0.5 - (0.95 / 2.0)  # 0.025
-    scale_max = 0.5 + (0.95 / 2.0)  # 0.975
-    
-    step = 0.95 / grid_size
-    half_step = step / 2.0
-    
-    # Generate ray paths mapped strictly inside the standardized coordinate space
-    bounds = np.linspace(scale_min + half_step, scale_max - half_step, grid_size)
+    # Use the identical 0.0 to 1.0 bounding domain from your working verify.py
+    bounds = np.linspace(0.0, 1.0, grid_size)
     x_coords, y_coords = np.meshgrid(bounds, bounds, indexing='ij')
     
-    # Position ray origins just below the active lattice boundary layer
     ray_origins = np.vstack((x_coords.ravel(), y_coords.ravel(), np.full_like(x_coords.ravel(), -0.1))).T
     ray_directions = np.tile([0, 0, 1], (len(ray_origins), 1))
     
-    # 2. Compute ray intersections (Memory-safe, highly efficient C-implementation)
     intersector = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
-    locations, index_ray, index_tri = intersector.intersects_location(
+    locations, index_ray, _ = intersector.intersects_location(
         ray_origins=ray_origins, 
         ray_directions=ray_directions, 
         multiple_hits=True
     )
     
-    # 3. Discretize intersection coordinates directly to array indices
     for ray_idx in range(len(ray_origins)):
         hit_mask = (index_ray == ray_idx)
         if not np.any(hit_mask):
@@ -87,19 +77,21 @@ def stl_to_voxel_tensor(stl_path, grid_size=64):
         z_hits = locations[hit_mask, 2]
         z_hits = np.sort(z_hits)
         
-        # Map spatial coordinates back to matrix index spaces [0 to 63]
-        x_pixel = int(round((ray_origins[ray_idx, 0] - (scale_min + half_step)) / step))
-        y_pixel = int(round((ray_origins[ray_idx, 1] - (scale_min + half_step)) / step))
-        
-        x_pixel = max(0, min(grid_size - 1, x_pixel))
-        y_pixel = max(0, min(grid_size - 1, y_pixel))
+        x_pixel = int(round(ray_origins[ray_idx, 0] * (grid_size - 1)))
+        y_pixel = int(round(ray_origins[ray_idx, 1] * (grid_size - 1)))
         
         for i in range(0, len(z_hits) - 1, 2):
-            z_start = max(0, min(grid_size - 1, int(round((z_hits[i] - (scale_min + half_step)) / step))))
-            z_end = max(0, min(grid_size - 1, int(round((z_hits[i+1] - (scale_min + half_step)) / step))))
-            stl_matrix[x_pixel, y_pixel, z_start:z_end + 1] = True
+            z_start = max(0, min(grid_size - 1, int(round(z_hits[i] * (grid_size - 1)))))
+            z_end = max(0, min(grid_size - 1, int(round(z_hits[i+1] * (grid_size - 1)))))
+            stl_matrix[x_pixel, y_pixel, z_start:z_end + 1] = 1.0
 
-    return torch.tensor(stl_matrix.astype(np.float32)).unsqueeze(0)
+    print("\n--- PRODUCTION STL VOXELIZER ---")
+    print(f"  * Solid Voxel Count: {int(np.sum(stl_matrix))}")
+    print(f"  * Density Ratio:     {np.sum(stl_matrix) / stl_matrix.size:.4f}")
+    print("-" * 40)
+    
+    # Returns a single-channel 4D tensor: [1, 64, 64, 64]
+    return torch.tensor(stl_matrix).unsqueeze(0)
 
 
 if __name__ == "__main__":
