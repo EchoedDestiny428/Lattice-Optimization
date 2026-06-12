@@ -4,7 +4,7 @@ import trimesh
 import numpy as np
 
 h5_path = os.path.join("data", "h5_files", "test.h5")
-output_stl_path = "standardized_lattice.stl"
+output_stl_path = "converted_lattice.stl"
 
 if os.path.exists(h5_path):
     with h5py.File(h5_path, 'r') as f:
