@@ -3,8 +3,8 @@ import trimesh
 import numpy as np
 
 # --- CONFIGURATION ---
-INPUT_STL_PATH = "sample_lattice.stl"      # The unstandardized CAD file
-OUTPUT_STL_PATH = "standardized_lattice.stl"  # The final clean reference file
+INPUT_STL_PATH = "converted_lattice.stl"      # The unstandardized CAD file
+OUTPUT_STL_PATH = "sample_lattice.stl"  # The final clean reference file
 
 def standardize_stl(input_path, output_path):
     if not os.path.exists(input_path):
