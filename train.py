@@ -51,13 +51,6 @@ class GLU3DDataset(Dataset):
         return torch.tensor(voxel_grid).unsqueeze(0), torch.tensor(true_score).unsqueeze(0)
 
 # 3. VERIFIED 0.0 TO 1.0 VOXELIZER
-import os
-import h5py
-import numpy as np
-import torch
-import trimesh
-from tqdm import tqdm
-
 def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
     if not os.path.exists(stl_path):
         raise FileNotFoundError(f"Target STL mesh not found at: {stl_path}")
