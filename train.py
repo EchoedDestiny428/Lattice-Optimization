@@ -85,10 +85,10 @@ if __name__ == "__main__":
     sample_h5 = os.path.join("data", "h5_files", "test.h5")
     sample_stl = "standardized_lattice.stl"
     
-    # Setup model save paths
+    # Setup final destination path
     model_dir = os.path.join("data", "models")
     os.makedirs(model_dir, exist_ok=True)
-    best_weights_path = os.path.join(model_dir, "lattice_3dcnn_best.pth")
+    final_weights_path = os.path.join(model_dir, "lattice_3dcnn_final.pth")
     
     dataset = GLU3DDataset(sample_h5)
     loader = DataLoader(dataset, batch_size=16, shuffle=True)
@@ -96,8 +96,6 @@ if __name__ == "__main__":
     model = Lattice3DCNN().to(device)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    
-    best_loss = float('inf')
     
     print("Training network...")
     for epoch in range(15):
@@ -117,17 +115,13 @@ if __name__ == "__main__":
         epoch_loss = running_loss / len(dataset)
         print(f"Epoch [{epoch+1:02d}/15] Complete | Loss: {epoch_loss:.6f}")
         
-        # Save checkpoint if MSE score improves
-        if epoch_loss < best_loss:
-            best_loss = epoch_loss
-            torch.save(model.state_dict(), best_weights_path)
-            print(f"  --> Saved new best model to {best_weights_path}")
-            
-    print(f"\nTraining finished. Lower training loss tracking achieved: {best_loss:.6f}")
+    # ONLY SAVE HERE: Once training loop ends completely
+    torch.save(model.state_dict(), final_weights_path)
+    print(f"\n[SUCCESS] Training finished. Weights secured at: {final_weights_path}")
     
-    # Verification Tests using best captured weights
-    print("\nLoading best weights for verification...")
-    model.load_state_dict(torch.load(best_weights_path))
+    # Verification Tests using the final saved weights
+    print("\nLoading final weights for validation testing...")
+    model.load_state_dict(torch.load(final_weights_path))
     model.eval()
     
     with torch.no_grad():
