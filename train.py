@@ -144,14 +144,16 @@ if __name__ == "__main__":
     # 6. VALIDATION TESTING RUN
     print("\nPreparing model evaluation pass...")
     model.eval()
+
+    test_idx = 550
     
     with torch.no_grad():
         with h5py.File(sample_h5, 'r') as f:
-            true_h5_val = f['stiffness'][0][0, 0]
+            true_h5_val = f['stiffness'][test_idx][0, 0]
             
-        h5_input = dataset[0][0].unsqueeze(0).to(device)
+        h5_input = dataset[test_idx][0].unsqueeze(0).to(device)
         pred_h5 = model(h5_input).item() * dataset.scale_factor
-        print(f"\nH5 Target Baseline: {true_h5_val:.4f} | H5 Model Prediction: {pred_h5:.4f}")
+        print(f"\nH5 Target Baseline (Index {test_idx}): {true_h5_val:.4f} | H5 Model Prediction: {pred_h5:.4f}")
         
         if os.path.exists(sample_stl):
             print(f"Voxelizing and running inference on: {sample_stl}")
