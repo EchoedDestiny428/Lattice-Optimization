@@ -112,6 +112,10 @@ def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
         print(f"[DEBUG SUCCESS] Reconstructed voxel array saved to: '{save_debug_h5}'")
 
     return torch.tensor(stl_matrix).unsqueeze(0)
+
+
+
+
 # 4. EXECUTION LOOP
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
