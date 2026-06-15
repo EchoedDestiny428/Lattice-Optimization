@@ -83,45 +83,66 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     sample_h5 = os.path.join("data", "h5_files", "test.h5")
-    sample_stl = "standardized_lattice.stl"
+    sample_stl = os.path.join("data", "stl_files", "standardized_lattice.stl")
     
     # Setup final destination path
     model_dir = os.path.join("data", "models")
     os.makedirs(model_dir, exist_ok=True)
     final_weights_path = os.path.join(model_dir, "lattice_3dcnn_final.pth")
     
-    dataset = GLU3DDataset(sample_h5)
-    loader = DataLoader(dataset, batch_size=16, shuffle=True)
+    # User Menu Selection
+    print("=============================================")
+    print("   Lattice 3D CNN Training Interface         ")
+    print("=============================================")
+    print("1) Load previously saved model weights")
+    print("2) Train a brand new model from scratch")
+    choice = input("\nSelect an option (1 or 2): ").strip()
     
+    should_train = True
     model = Lattice3DCNN().to(device)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
     
-    print("Training network...")
-    for epoch in range(15):
-        model.train()
-        running_loss = 0.0
-        
-        for inputs, targets in loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            
-            optimizer.zero_grad()
-            loss = criterion(model(inputs), targets)
-            loss.backward()
-            optimizer.step()
-            
-            running_loss += loss.item() * inputs.size(0)
-            
-        epoch_loss = running_loss / len(dataset)
-        print(f"Epoch [{epoch+1:02d}/15] Complete | Loss: {epoch_loss:.6f}")
-        
-    # ONLY SAVE HERE: Once training loop ends completely
-    torch.save(model.state_dict(), final_weights_path)
-    print(f"\n[SUCCESS] Training finished. Weights secured at: {final_weights_path}")
+    if choice == '1':
+        if os.path.exists(final_weights_path):
+            print(f"\n[INFO] Found existing weights at: {final_weights_path}")
+            model.load_state_dict(torch.load(final_weights_path, map_location=device))
+            print("[SUCCESS] Pre-trained weights successfully loaded into model structure.")
+            should_train = False
+        else:
+            print(f"\n[WARNING] Weights file not found at '{final_weights_path}'.")
+            print("Defaulting back to training mode...")
     
-    # Verification Tests using the final saved weights
-    print("\nLoading final weights for validation testing...")
-    model.load_state_dict(torch.load(final_weights_path))
+    dataset = GLU3DDataset(sample_h5)
+    
+    # 5. OPTIONAL TRAINING BLOCK
+    if should_train:
+        loader = DataLoader(dataset, batch_size=16, shuffle=True)
+        criterion = nn.MSELoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        
+        print("\nBeginning network training loop...")
+        for epoch in range(15):
+            model.train()
+            running_loss = 0.0
+            
+            for inputs, targets in loader:
+                inputs, targets = inputs.to(device), targets.to(device)
+                
+                optimizer.zero_grad()
+                loss = criterion(model(inputs), targets)
+                loss.backward()
+                optimizer.step()
+                
+                running_loss += loss.item() * inputs.size(0)
+                
+            epoch_loss = running_loss / len(dataset)
+            print(f"Epoch [{epoch+1:02d}/15] Complete | Loss: {epoch_loss:.6f}")
+            
+        # ONLY SAVE HERE: Once training loop ends completely
+        torch.save(model.state_dict(), final_weights_path)
+        print(f"\n[SUCCESS] Training finished. Weights secured at: {final_weights_path}")
+    
+    # 6. VALIDATION TESTING RUN
+    print("\nPreparing model evaluation pass...")
     model.eval()
     
     with torch.no_grad():
@@ -130,8 +151,12 @@ if __name__ == "__main__":
             
         h5_input = dataset[0][0].unsqueeze(0).to(device)
         pred_h5 = model(h5_input).item() * dataset.scale_factor
-        print(f"\nH5 Target: {true_h5_val:.4f} | H5 Prediction: {pred_h5:.4f}")
+        print(f"\nH5 Target Baseline: {true_h5_val:.4f} | H5 Model Prediction: {pred_h5:.4f}")
         
-        stl_input = stl_to_voxel_tensor(sample_stl).unsqueeze(0).to(device)
-        pred_stl = model(stl_input).item() * dataset.scale_factor
-        print(f"STL Prediction: {pred_stl:.4f}")
+        if os.path.exists(sample_stl):
+            print(f"Voxelizing and running inference on: {sample_stl}")
+            stl_input = stl_to_voxel_tensor(sample_stl).unsqueeze(0).to(device)
+            pred_stl = model(stl_input).item() * dataset.scale_factor
+            print(f"STL Model Prediction:  {pred_stl:.4f}")
+        else:
+            print(f"[ERROR] Verification STL missing at {sample_stl}. Skipping target check.")
