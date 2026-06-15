@@ -8,6 +8,7 @@ import trimesh
 import numpy as np
 from tqdm import tqdm
 from matplotlib.path import Path
+import scipy.ndimage as ndimage
 
 # 1. NETWORKING ARCHITECTURE
 class Lattice3DCNN(nn.Module):
@@ -58,32 +59,41 @@ def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
     mesh = trimesh.load(stl_path)
     stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     
-    print("\n[PROCESSING] Running Zero-RAM Vectorized Vertex Mapping...")
+    print("\n[PROCESSING] Mapping Full-Scale Lattice Boundaries...")
     
     vertices = mesh.vertices
     if len(vertices) == 0:
         print("[WARNING] No vertices found in STL. Returning empty grid.")
         return torch.zeros((1, grid_size, grid_size, grid_size), dtype=torch.float32)
     
-    # Scale coordinates from physical space [0.0, 1.0] to matrix index space [0, 63]
-    scaled_indices = np.floor((vertices - 1e-5) * grid_size).astype(np.int32)
+    # 1. Map vertices at 100% original size (Dimensions locked)
+    scaled_indices = np.floor(vertices * grid_size).astype(np.int32)
     scaled_indices = np.clip(scaled_indices, 0, grid_size - 1)
     
-    # Chunk the vertices to give the progress bar steps to iterate through
-    # Using 10 chunks keeps the loop overhead low while showing a smooth status bar
     chunk_size = max(1, len(scaled_indices) // 10)
-    
     for i in tqdm(range(0, len(scaled_indices), chunk_size), desc="Mapping Vertices", unit="chunk"):
         chunk = scaled_indices[i : i + chunk_size]
         stl_matrix[chunk[:, 0], chunk[:, 1], chunk[:, 2]] = 1.0
-
+        
+    # 1. Standard raw neighbor counts
     horizontal_neighbors = (
         stl_matrix[np.r_[0, 0:63], :, :] + stl_matrix[np.r_[1:64, 63], :, :] +
         stl_matrix[:, np.r_[0, 0:63], :] + stl_matrix[:, np.r_[1:64, 63], :]
     )
+    depth_neighbors = (
+        stl_matrix[:, :, np.r_[0, 0:63]] + stl_matrix[:, :, np.r_[1:64, 63]]
+    )
+    
+    
+    z, y, x = np.indices(stl_matrix.shape)
+    gradient = (np.sin(x) + np.sin(y) + np.sin(z)) * 0.1
+    
+    weighted_neighbors = horizontal_neighbors + depth_neighbors + gradient
+    
+    thickness_threshold = 5.0
+    
+    stl_matrix = ((stl_matrix == 1.0) & (weighted_neighbors >= thickness_threshold)).astype(np.float32)
 
-    stl_matrix = ((stl_matrix == 1.0) & (horizontal_neighbors >= 4)).astype(np.float32)
-        
     print(f"[INFO] Voxelization complete. Total Solid Voxels Detected: {int(np.sum(stl_matrix))}")
     
     if save_debug_h5:
@@ -96,7 +106,6 @@ def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
         print(f"[DEBUG SUCCESS] Reconstructed voxel array written to: '{save_debug_h5}'")
 
     return torch.tensor(stl_matrix).unsqueeze(0)
-
 
 
 # 4. EXECUTION LOOP
