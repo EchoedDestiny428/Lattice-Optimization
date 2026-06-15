@@ -6,6 +6,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import trimesh
 import numpy as np
+from tqdm import tqdm
 
 # 1. NETWORKING ARCHITECTURE
 class Lattice3DCNN(nn.Module):
@@ -50,46 +51,67 @@ class GLU3DDataset(Dataset):
 
 # 3. VERIFIED 0.0 TO 1.0 VOXELIZER
 def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
+    # 1. Load raw mesh - NO heavy repair scripts that trigger deadlocks
     mesh = trimesh.load(stl_path)
     stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     
+    # 2. Setup standard 0.0 to 1.0 coordinate arrays
     bounds = np.linspace(0.0, 1.0, grid_size)
+    step = 1.0 / grid_size
+    half_step = step / 2.0
+    
+    # Using half-step pixel centers completely avoids hitting exact blocky edges/corners
+    pixel_centers = bounds + half_step
+    
     x_coords, y_coords = np.meshgrid(bounds, bounds, indexing='ij')
     ray_origins = np.vstack((x_coords.ravel(), y_coords.ravel(), np.full_like(x_coords.ravel(), -0.1))).T
     ray_directions = np.tile([0, 0, 1], (len(ray_origins), 1))
     
+    print(f"\n[PROCESSING] Initializing Watertight Ray-Collision Analysis...")
     intersector = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
+    
+    # This runs almost instantly because ray-triangle intersections are highly optimized
     locations, index_ray, _ = intersector.intersects_location(
         ray_origins=ray_origins, ray_directions=ray_directions, multiple_hits=True
     )
     
-    for ray_idx in range(len(ray_origins)):
+    print(f"Mapping intersections back to 64x64x64 grid space:")
+    # 3. Process the columns layer-by-layer to show a moving status bar
+    for ray_idx in tqdm(range(len(ray_origins)), desc="Analyzing Ray Paths", unit="ray"):
         hit_mask = (index_ray == ray_idx)
-        if not np.any(hit_mask): continue
+        if not np.any(hit_mask): 
+            continue
             
+        # Get all Z-axis hit positions for this specific ray column
         z_hits = np.sort(locations[hit_mask, 2])
+        
+        # Determine the matrix index for X and Y
         x_pixel = int(round(ray_origins[ray_idx, 0] * (grid_size - 1)))
         y_pixel = int(round(ray_origins[ray_idx, 1] * (grid_size - 1)))
         
-        for i in range(0, len(z_hits) - 1, 2):
-            z_start = max(0, min(grid_size - 1, int(round(z_hits[i] * (grid_size - 1)))))
-            z_end = max(0, min(grid_size - 1, int(round(z_hits[i+1] * (grid_size - 1)))))
-            stl_matrix[x_pixel, y_pixel, z_start:z_end + 1] = 1.0
+        # Step through every voxel along the Z axis for this column
+        for z_idx in range(grid_size):
+            z_val = pixel_centers[z_idx]
+            
+            
+            num_crossings_below = np.sum(z_hits < z_val)
+            
+            if num_crossings_below % 2 == 1:
+                stl_matrix[x_pixel, y_pixel, z_idx] = 1.0
 
-    # Optional Debug Saving Block
+    print(f"[INFO] Voxelization complete. Total Solid Voxels Detected: {int(np.sum(stl_matrix))}")
+    
+    # 4. Optional Debug Saving Block
     if save_debug_h5:
         output_dir = os.path.dirname(save_debug_h5)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
             
         with h5py.File(save_debug_h5, 'w') as f:
-            # Save it matching the exact structure [batch, x, y, z] of your source file
-            # Adding an extra dimension [1, 64, 64, 64] so it behaves like a dataset array
             f.create_dataset('voxels', data=np.expand_dims(stl_matrix, axis=0), dtype='f4')
-        print(f"[DEBUG] Ray-casted voxel tensor saved to: '{save_debug_h5}'")
+        print(f"[DEBUG SUCCESS] Reconstructed voxel array saved to: '{save_debug_h5}'")
 
     return torch.tensor(stl_matrix).unsqueeze(0)
-
 # 4. EXECUTION LOOP
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
