@@ -58,41 +58,27 @@ def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
     mesh = trimesh.load(stl_path)
     stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     
-    print("\n[PROCESSING] Running Zero-RAM Vectorized Vertex Mapping...")
+    print("\n[PROCESSING] Running Precision-Scaled Vertex Mapping...")
     
     vertices = mesh.vertices
     if len(vertices) == 0:
         print("[WARNING] No vertices found in STL. Returning empty grid.")
         return torch.zeros((1, grid_size, grid_size, grid_size), dtype=torch.float32)
     
-    # Scale coordinates from physical space [0.0, 1.0] to matrix index space [0, 63]
-    scaled_indices = np.floor((vertices - 1e-5) * grid_size).astype(np.int32)
-    scaled_indices = np.clip(scaled_indices, 0, grid_size - 1)
+    # --- THE PRECISION TWEAK ---
+    shrink_factor = 0.805
+    centered_vertices = (vertices - 0.5) * shrink_factor + 0.5
     
-    # Chunk the vertices to give the progress bar steps to iterate through
-    # Using 10 chunks keeps the loop overhead low while showing a smooth status bar
+    # 2. Map the shrunk coordinates back to your standard floor grid
+    scaled_indices = np.floor(centered_vertices * grid_size).astype(np.int32)
+    scaled_indices = np.clip(scaled_indices, 0, grid_size - 1)
+    # ----------------------------
+    
     chunk_size = max(1, len(scaled_indices) // 10)
     
     for i in tqdm(range(0, len(scaled_indices), chunk_size), desc="Mapping Vertices", unit="chunk"):
         chunk = scaled_indices[i : i + chunk_size]
         stl_matrix[chunk[:, 0], chunk[:, 1], chunk[:, 2]] = 1.0
-
-    ortho_neighbors = (
-        stl_matrix[np.r_[0, 0:63], :, :] + stl_matrix[np.r_[1:64, 63], :, :] +
-        stl_matrix[:, np.r_[0, 0:63], :] + stl_matrix[:, np.r_[1:64, 63], :]
-    )
-    
-    diag_neighbors = (
-        stl_matrix[np.r_[0, 0:63], np.r_[0, 0:63], :] + 
-        stl_matrix[np.r_[0, 0:63], np.r_[1:64, 63], :] +
-        stl_matrix[np.r_[1:64, 63], np.r_[0, 0:63], :] + 
-        stl_matrix[np.r_[1:64, 63], np.r_[1:64, 63], :]
-    )
-    
-    total_horizontal_context = ortho_neighbors + diag_neighbors
-    
-    
-    stl_matrix = ((stl_matrix == 1.0) & (total_horizontal_context >= 6)).astype(np.float32)
         
     print(f"[INFO] Voxelization complete. Total Solid Voxels Detected: {int(np.sum(stl_matrix))}")
     
