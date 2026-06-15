@@ -54,7 +54,10 @@ def voxel_to_blocky_stl(h5_path, output_stl_path, target_extent=1.0, padding_mul
     print(f"Bounding Box Center: {mesh.bounds.mean(axis=0)}")
 
 if __name__ == "__main__":
-    h5_input = os.path.join("data", "h5_files", "test2.h5")
-    stl_output = os.path.join("data", "stl_files", "standardized_lattice.stl")
+    # h5_input = os.path.join("data", "h5_files", "test2.h5")
+    # stl_output = os.path.join("data", "stl_files", "standardized_lattice.stl")
+
+    h5_input = os.path.join("data", "h5_files", "debug.h5")
+    stl_output = os.path.join("data", "stl_files", "debug.stl")
     
     voxel_to_blocky_stl(h5_input, stl_output)
