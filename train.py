@@ -82,7 +82,7 @@ def stl_to_voxel_tensor(stl_path, grid_size=64):
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    sample_h5 = os.path.join("data", "h5_files", "test.h5")
+    sample_h5 = os.path.join("data", "h5_files", "test2.h5")
     sample_stl = os.path.join("data", "stl_files", "standardized_lattice.stl")
     
     # Setup final destination path
@@ -145,7 +145,7 @@ if __name__ == "__main__":
     print("\nPreparing model evaluation pass...")
     model.eval()
 
-    test_idx = 550
+    test_idx = 5
     
     with torch.no_grad():
         with h5py.File(sample_h5, 'r') as f:
