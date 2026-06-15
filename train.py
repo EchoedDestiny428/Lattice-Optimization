@@ -49,7 +49,7 @@ class GLU3DDataset(Dataset):
         return torch.tensor(voxel_grid).unsqueeze(0), torch.tensor(true_score).unsqueeze(0)
 
 # 3. VERIFIED 0.0 TO 1.0 VOXELIZER
-def stl_to_voxel_tensor(stl_path, grid_size=64):
+def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
     mesh = trimesh.load(stl_path)
     stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     
@@ -75,6 +75,18 @@ def stl_to_voxel_tensor(stl_path, grid_size=64):
             z_start = max(0, min(grid_size - 1, int(round(z_hits[i] * (grid_size - 1)))))
             z_end = max(0, min(grid_size - 1, int(round(z_hits[i+1] * (grid_size - 1)))))
             stl_matrix[x_pixel, y_pixel, z_start:z_end + 1] = 1.0
+
+    # Optional Debug Saving Block
+    if save_debug_h5:
+        output_dir = os.path.dirname(save_debug_h5)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+            
+        with h5py.File(save_debug_h5, 'w') as f:
+            # Save it matching the exact structure [batch, x, y, z] of your source file
+            # Adding an extra dimension [1, 64, 64, 64] so it behaves like a dataset array
+            f.create_dataset('voxels', data=np.expand_dims(stl_matrix, axis=0), dtype='f4')
+        print(f"[DEBUG] Ray-casted voxel tensor saved to: '{save_debug_h5}'")
 
     return torch.tensor(stl_matrix).unsqueeze(0)
 
@@ -156,8 +168,10 @@ if __name__ == "__main__":
         print(f"\nH5 Target Baseline (Index {test_idx}): {true_h5_val:.4f} | H5 Model Prediction: {pred_h5:.4f}")
         
         if os.path.exists(sample_stl):
+            debug_h5_output = os.path.join("data", "h5_files", "debug.h5")
+
             print(f"Voxelizing and running inference on: {sample_stl}")
-            stl_input = stl_to_voxel_tensor(sample_stl).unsqueeze(0).to(device)
+            stl_input = stl_to_voxel_tensor(sample_stl, save_debug_h5=debug_h5_output).unsqueeze(0).to(device)
             pred_stl = model(stl_input).item() * dataset.scale_factor
             print(f"STL Model Prediction:  {pred_stl:.4f}")
         else:
