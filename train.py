@@ -76,6 +76,11 @@ def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
     for i in tqdm(range(0, len(scaled_indices), chunk_size), desc="Mapping Vertices", unit="chunk"):
         chunk = scaled_indices[i : i + chunk_size]
         stl_matrix[chunk[:, 0], chunk[:, 1], chunk[:, 2]] = 1.0
+
+    stl_matrix = (stl_matrix 
+                  * stl_matrix[np.r_[0, 0:63], :, :] * stl_matrix[np.r_[1:64, 63], :, :] 
+                  * stl_matrix[:, np.r_[0, 0:63], :] * stl_matrix[:, np.r_[1:64, 63], :] 
+                  * stl_matrix[:, :, np.r_[0, 0:63]] * stl_matrix[:, :, np.r_[1:64, 63]])
         
     print(f"[INFO] Voxelization complete. Total Solid Voxels Detected: {int(np.sum(stl_matrix))}")
     
