@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 import trimesh
 import numpy as np
 from tqdm import tqdm
+from matplotlib.path import Path
 
 # 1. NETWORKING ARCHITECTURE
 class Lattice3DCNN(nn.Module):
@@ -50,58 +51,41 @@ class GLU3DDataset(Dataset):
         return torch.tensor(voxel_grid).unsqueeze(0), torch.tensor(true_score).unsqueeze(0)
 
 # 3. VERIFIED 0.0 TO 1.0 VOXELIZER
+import os
+import h5py
+import numpy as np
+import torch
+import trimesh
+from tqdm import tqdm
+
 def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
-    # 1. Load raw mesh - NO heavy repair scripts that trigger deadlocks
+    if not os.path.exists(stl_path):
+        raise FileNotFoundError(f"Target STL mesh not found at: {stl_path}")
+        
     mesh = trimesh.load(stl_path)
     stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     
-    # 2. Setup standard 0.0 to 1.0 coordinate arrays
-    bounds = np.linspace(0.0, 1.0, grid_size)
-    step = 1.0 / grid_size
-    half_step = step / 2.0
+    print("\n[PROCESSING] Running Zero-RAM Vectorized Vertex Mapping...")
     
-    # Using half-step pixel centers completely avoids hitting exact blocky edges/corners
-    pixel_centers = bounds + half_step
+    vertices = mesh.vertices
+    if len(vertices) == 0:
+        print("[WARNING] No vertices found in STL. Returning empty grid.")
+        return torch.zeros((1, grid_size, grid_size, grid_size), dtype=torch.float32)
     
-    x_coords, y_coords = np.meshgrid(bounds, bounds, indexing='ij')
-    ray_origins = np.vstack((x_coords.ravel(), y_coords.ravel(), np.full_like(x_coords.ravel(), -0.1))).T
-    ray_directions = np.tile([0, 0, 1], (len(ray_origins), 1))
+    # Scale coordinates from physical space [0.0, 1.0] to matrix index space [0, 63]
+    scaled_indices = np.floor((vertices - 1e-5) * grid_size).astype(np.int32)
+    scaled_indices = np.clip(scaled_indices, 0, grid_size - 1)
     
-    print(f"\n[PROCESSING] Initializing Watertight Ray-Collision Analysis...")
-    intersector = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
+    # Chunk the vertices to give the progress bar steps to iterate through
+    # Using 10 chunks keeps the loop overhead low while showing a smooth status bar
+    chunk_size = max(1, len(scaled_indices) // 10)
     
-    # This runs almost instantly because ray-triangle intersections are highly optimized
-    locations, index_ray, _ = intersector.intersects_location(
-        ray_origins=ray_origins, ray_directions=ray_directions, multiple_hits=True
-    )
-    
-    print(f"Mapping intersections back to 64x64x64 grid space:")
-    # 3. Process the columns layer-by-layer to show a moving status bar
-    for ray_idx in tqdm(range(len(ray_origins)), desc="Analyzing Ray Paths", unit="ray"):
-        hit_mask = (index_ray == ray_idx)
-        if not np.any(hit_mask): 
-            continue
-            
-        # Get all Z-axis hit positions for this specific ray column
-        z_hits = np.sort(locations[hit_mask, 2])
+    for i in tqdm(range(0, len(scaled_indices), chunk_size), desc="Mapping Vertices", unit="chunk"):
+        chunk = scaled_indices[i : i + chunk_size]
+        stl_matrix[chunk[:, 0], chunk[:, 1], chunk[:, 2]] = 1.0
         
-        # Determine the matrix index for X and Y
-        x_pixel = int(round(ray_origins[ray_idx, 0] * (grid_size - 1)))
-        y_pixel = int(round(ray_origins[ray_idx, 1] * (grid_size - 1)))
-        
-        # Step through every voxel along the Z axis for this column
-        for z_idx in range(grid_size):
-            z_val = pixel_centers[z_idx]
-            
-            
-            num_crossings_below = np.sum(z_hits < z_val)
-            
-            if num_crossings_below % 2 == 1:
-                stl_matrix[x_pixel, y_pixel, z_idx] = 1.0
-
     print(f"[INFO] Voxelization complete. Total Solid Voxels Detected: {int(np.sum(stl_matrix))}")
     
-    # 4. Optional Debug Saving Block
     if save_debug_h5:
         output_dir = os.path.dirname(save_debug_h5)
         if output_dir and not os.path.exists(output_dir):
@@ -109,10 +93,9 @@ def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
             
         with h5py.File(save_debug_h5, 'w') as f:
             f.create_dataset('voxels', data=np.expand_dims(stl_matrix, axis=0), dtype='f4')
-        print(f"[DEBUG SUCCESS] Reconstructed voxel array saved to: '{save_debug_h5}'")
+        print(f"[DEBUG SUCCESS] Reconstructed voxel array written to: '{save_debug_h5}'")
 
     return torch.tensor(stl_matrix).unsqueeze(0)
-
 
 
 
@@ -183,7 +166,7 @@ if __name__ == "__main__":
     print("\nPreparing model evaluation pass...")
     model.eval()
 
-    test_idx = 5
+    test_idx = 550
     
     with torch.no_grad():
         with h5py.File(sample_h5, 'r') as f:
