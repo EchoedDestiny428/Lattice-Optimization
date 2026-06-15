@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 import trimesh
 import numpy as np
 from tqdm import tqdm
-from matplotlib.path import Path
+from scipy.ndimage import gaussian_filter
 
 # 1. NETWORKING ARCHITECTURE
 class Lattice3DCNN(nn.Module):
@@ -58,28 +58,37 @@ def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
     mesh = trimesh.load(stl_path)
     stl_matrix = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
     
-    print("\n[PROCESSING] Running Precision-Scaled Vertex Mapping...")
+    print(f"\n[PROCESSING] Voxelizing: {os.path.basename(stl_path)}")
     
     vertices = mesh.vertices
     if len(vertices) == 0:
-        print("[WARNING] No vertices found in STL. Returning empty grid.")
+        print("[WARNING] No vertices found. Returning empty grid.")
         return torch.zeros((1, grid_size, grid_size, grid_size), dtype=torch.float32)
     
-    # --- THE PRECISION TWEAK ---
-    shrink_factor = 0.805
-    centered_vertices = (vertices - 0.5) * shrink_factor + 0.5
-    
-    # 2. Map the shrunk coordinates back to your standard floor grid
-    scaled_indices = np.floor(centered_vertices * grid_size).astype(np.int32)
+    # Map vertices at 100% full scale (Dimensions perfectly locked)
+    scaled_indices = np.floor(vertices * grid_size).astype(np.int32)
     scaled_indices = np.clip(scaled_indices, 0, grid_size - 1)
-    # ----------------------------
     
     chunk_size = max(1, len(scaled_indices) // 10)
-    
     for i in tqdm(range(0, len(scaled_indices), chunk_size), desc="Mapping Vertices", unit="chunk"):
         chunk = scaled_indices[i : i + chunk_size]
         stl_matrix[chunk[:, 0], chunk[:, 1], chunk[:, 2]] = 1.0
         
+    # --- DIAGNOSTIC OVERWRITE ---
+    # 1. Ensure we are working with true floats
+    smoothed_weights = gaussian_filter(stl_matrix.astype(np.float32), sigma=1.0)
+    
+    # 2. Print out the exact min/max to see if a gradient actually exists
+    print(f"[DIAGNOSTIC] Smoothed Weights -> Min: {smoothed_weights.min():.4f}, Max: {smoothed_weights.max():.4f}")
+    
+    # percent to delete
+    thickness_threshold = 0.77
+    
+    stl_matrix = (smoothed_weights >= thickness_threshold).astype(np.float32)
+    print(f"[DIAGNOSTIC] Post-Threshold Solid Voxels Remaining: {int(np.sum(stl_matrix))}")
+    # ----------------------------
+    
+
     print(f"[INFO] Voxelization complete. Total Solid Voxels Detected: {int(np.sum(stl_matrix))}")
     
     if save_debug_h5:
@@ -162,7 +171,7 @@ if __name__ == "__main__":
     print("\nPreparing model evaluation pass...")
     model.eval()
 
-    test_idx = 550
+    test_idx = 250
     
     with torch.no_grad():
         with h5py.File(sample_h5, 'r') as f:
