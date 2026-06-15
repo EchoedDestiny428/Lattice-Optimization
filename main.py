@@ -3,7 +3,7 @@ import h5py
 import numpy as np
 import trimesh
 
-def voxel_to_blocky_stl(h5_path, output_stl_path, target_extent=0.95, padding_multiplier=0.985):
+def voxel_to_blocky_stl(h5_path, output_stl_path, target_extent=1.0, padding_multiplier=1.0):
     if not os.path.exists(h5_path):
         print(f"Error: Could not find H5 file at {h5_path}")
         return
@@ -15,33 +15,40 @@ def voxel_to_blocky_stl(h5_path, output_stl_path, target_extent=0.95, padding_mu
 
     # 1. Load the target voxel grid from H5
     with h5py.File(h5_path, 'r') as f:
-        voxel_grid = f['voxels'][0].astype(bool)  # Must be boolean for voxel ops
+        voxel_grid = f['voxels'][0].astype(bool)
     grid_size = voxel_grid.shape[0]
 
-    # 2. Convert directly to a raw block/cube mesh (No Smoothing!)
-    # This turns every True value into an un-smoothed 3D box geometry
-    voxel_obj = trimesh.voxel.VoxelGrid(voxel_grid)
-    mesh = voxel_obj.marching_cubes() # Note: Trimesh uses un-smoothed marching cubes internally for raw grids
+    # 2. Extract active voxel coordinates
+    # Find the exact (x, y, z) indices where voxel is True
+    z_indices, y_indices, x_indices = np.where(voxel_grid)
+    
+    # Create an array of 3D center points for our cubes
+    centers = np.column_stack((x_indices, y_indices, z_indices))
 
-    # 3. Structural Voxel-to-Physical Scaling (0.0 to 1.0 Domain)
-    # Aligning the discrete indices precisely to the normalized box domain
-    verts = mesh.vertices / grid_size
+    # 3. Manually build clean, independent 3D boxes
+    # This guarantees absolutely zero optimization glitches or sliver triangles
+    box = trimesh.creation.box(extents=[1.0, 1.0, 1.0])
+    mesh = trimesh.util.concatenate([box.copy().apply_translation(c) for c in centers])
+
+    # 4. Structural Voxel-to-Physical Scaling (0.0 to 1.0 Domain)
+    # Since boxes are centered at integer indices, we offset by 0.5 to align bounds perfectly
+    verts = (mesh.vertices + 0.5) / grid_size
     mesh = trimesh.Trimesh(vertices=verts, faces=mesh.faces)
 
-    # 4. Apply Target Structural Footprint
+    # 5. Apply Target Structural Footprint
     max_side = mesh.extents.max()
     scale_factor = (target_extent / max_side) * padding_multiplier
     mesh.apply_scale(scale_factor)
 
-    # 5. Perfect Domain Center Alignment
+    # 6. Perfect Domain Center Alignment
     bbox_center = mesh.bounds.mean(axis=0)
     target_center = np.array([0.5, 0.5, 0.5])
     mesh.apply_translation(target_center - bbox_center)
 
-    # 6. Save the clean blocky asset
+    # 7. Save the immaculate blocky asset
     mesh.export(output_stl_path)
     
-    print("=== BLOCKY PIPELINE SYNCHRONIZATION COMPLETE ===")
+    print("=== IMMACULATE BLOCKY PIPELINE COMPLETE ===")
     print(f"File Saved:          '{output_stl_path}'")
     print(f"Physical Extents:    {mesh.extents}")
     print(f"Bounding Box Center: {mesh.bounds.mean(axis=0)}")
