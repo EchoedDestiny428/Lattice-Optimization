@@ -77,12 +77,22 @@ def stl_to_voxel_tensor(stl_path, grid_size=64, save_debug_h5=None):
         chunk = scaled_indices[i : i + chunk_size]
         stl_matrix[chunk[:, 0], chunk[:, 1], chunk[:, 2]] = 1.0
 
-    horizontal_neighbors = (
+    ortho_neighbors = (
         stl_matrix[np.r_[0, 0:63], :, :] + stl_matrix[np.r_[1:64, 63], :, :] +
         stl_matrix[:, np.r_[0, 0:63], :] + stl_matrix[:, np.r_[1:64, 63], :]
     )
-
-    stl_matrix = ((stl_matrix == 1.0) & (horizontal_neighbors >= 4)).astype(np.float32)
+    
+    diag_neighbors = (
+        stl_matrix[np.r_[0, 0:63], np.r_[0, 0:63], :] + 
+        stl_matrix[np.r_[0, 0:63], np.r_[1:64, 63], :] +
+        stl_matrix[np.r_[1:64, 63], np.r_[0, 0:63], :] + 
+        stl_matrix[np.r_[1:64, 63], np.r_[1:64, 63], :]
+    )
+    
+    total_horizontal_context = ortho_neighbors + diag_neighbors
+    
+    
+    stl_matrix = ((stl_matrix == 1.0) & (total_horizontal_context >= 6)).astype(np.float32)
         
     print(f"[INFO] Voxelization complete. Total Solid Voxels Detected: {int(np.sum(stl_matrix))}")
     
