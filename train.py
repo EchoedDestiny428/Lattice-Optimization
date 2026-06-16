@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from src.models import LatticeEfficiencyNet
-from src.generator import generate_lattice_by_percentage
+from src.generator import generate_lattice
 
 # ==============================================================================
 USE_SYNTHETIC = True  
@@ -41,7 +41,7 @@ def generate_synthetic_batch(batch_size=2):
         l_type = np.random.choice(['gyroid', 'schwarz_p'])
         random_percent = np.random.uniform(15.0, 50.0)
         
-        voxels, _ = generate_lattice_by_percentage(equation_type=l_type, target_percent=random_percent)
+        voxels, _ = generate_lattice(equation_type=l_type, target_percent=random_percent)
         fake_true_score = 1.10 if l_type == 'gyroid' else 0.90 # gyroid's just superior in general
         fake_true_score += np.random.uniform(-0.05, 0.05)
         

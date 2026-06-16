@@ -23,7 +23,6 @@ def evaluate_physical_stats(voxel_grid, material_profile, ai_efficiency_score=1.
     E_lattice_actual = E_baseline * ai_efficiency_score
     sigma_lattice_actual = sigma_baseline * ai_efficiency_score
     
-    # Lock Bounding Envelope to Exactly 1 cm (10.0 mm)
     # Cross-sectional Area = 10mm * 10mm = 100 mm^2
     area_mm2 = 100.0 
     radius_meters = 0.005 
