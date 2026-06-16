@@ -1,7 +1,7 @@
 # src/generator.py
 import numpy as np
 from scipy.ndimage import gaussian_filter
-import config
+import src.config as config
 
 def generate_tpms_voxels(equation_type='gyroid', t_threshold=0.0, sigma=1.0, cutoff=0.75):
     res = config.GRID_SIZE
