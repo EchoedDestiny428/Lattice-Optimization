@@ -1,52 +1,72 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-BOX_SIZE = 10.0
+# -----------------------------
+# GLOBAL SETTINGS
+# -----------------------------
 RESOLUTION = 20
+BOX_SIZE = 10.0
 
 
-def tpms(X, Y, Z, p):
-    c1, c2, c3, c4, c5 = p
-
+# -----------------------------
+# TPMS BASE FUNCTIONS
+# -----------------------------
+def gyroid(X, Y, Z):
     return (
-        c1*np.sin(X)*np.cos(Y)
-        + c2*np.sin(Y)*np.cos(Z)
-        + c3*np.sin(Z)*np.cos(X)
-        + c4*np.cos(X)*np.cos(Y)*np.cos(Z)
-        + c5*(np.cos(2*X)+np.cos(2*Y)+np.cos(2*Z))
+        np.sin(X)*np.cos(Y) +
+        np.sin(Y)*np.cos(Z) +
+        np.sin(Z)*np.cos(X)
     )
 
 
-def generate_field(params):
-
-    x = np.linspace(
-        0,
-        2*np.pi,
-        RESOLUTION,
-        endpoint=False
+def diamond(X, Y, Z):
+    return (
+        np.sin(X)*np.sin(Y)*np.sin(Z) +
+        np.sin(X)*np.cos(Y)*np.cos(Z) +
+        np.cos(X)*np.sin(Y)*np.cos(Z) +
+        np.cos(X)*np.cos(Y)*np.sin(Z)
     )
 
-    X, Y, Z = np.meshgrid(
-        x, x, x,
-        indexing="ij"
+
+def primitive(X, Y, Z):
+    return (
+        np.cos(X) +
+        np.cos(Y) +
+        np.cos(Z)
     )
 
-    field = tpms(X, Y, Z, params)
 
-    field = (
-        field - field.mean()
-    ) / (
-        field.std() + 1e-8
-    )
+# -----------------------------
+# FIELD GENERATION
+# -----------------------------
+def generate_field(shape_type="gyroid", freq=1.0, noise=0.05):
 
-    field = gaussian_filter(
-        field,
-        sigma=0.25
-    )
+    x = np.linspace(0, 2*np.pi*freq, RESOLUTION, endpoint=False)
+    X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
+
+    if shape_type == "gyroid":
+        field = gyroid(X, Y, Z)
+    elif shape_type == "diamond":
+        field = diamond(X, Y, Z)
+    elif shape_type == "primitive":
+        field = primitive(X, Y, Z)
+    else:
+        raise ValueError(f"Unknown shape: {shape_type}")
+
+    # normalize for stable thresholding
+    field = (field - field.mean()) / (field.std() + 1e-8)
+
+    # small randomness (optional)
+    field += noise * np.random.randn(*field.shape)
+
+    field = gaussian_filter(field, sigma=0.25)
 
     return field
 
 
+# -----------------------------
+# VOXELIZATION
+# -----------------------------
 def field_to_voxels(field, threshold):
     return field < threshold
 
@@ -55,32 +75,26 @@ def density(voxels):
     return float(voxels.mean())
 
 
-def find_threshold(
-    field,
-    target=0.3,
-    tol=0.005,
-    max_iter=30
-):
+# -----------------------------
+# THRESHOLD SEARCH
+# -----------------------------
+def find_threshold(field, target_density=0.3, tol=0.01, max_iter=25):
 
-    lo = float(field.min())
-    hi = float(field.max())
-
+    lo, hi = -2.0, 2.0
     best_mid = 0.0
 
     for _ in range(max_iter):
 
         mid = 0.5 * (lo + hi)
-
         vox = field_to_voxels(field, mid)
-
         d = density(vox)
 
         best_mid = mid
 
-        if abs(d - target) < tol:
+        if abs(d - target_density) < tol:
             return mid
 
-        if d < target:
+        if d < target_density:
             lo = mid
         else:
             hi = mid
@@ -88,25 +102,18 @@ def find_threshold(
     return best_mid
 
 
-def generate_lattice(
-    params,
-    target_density=0.3
-):
+# -----------------------------
+# MAIN PIPELINE
+# -----------------------------
+def generate_lattice(shape_type="gyroid",
+                      target_density=0.3,
+                      freq=1.0,
+                      noise=0.05):
 
-    field = generate_field(params)
+    field = generate_field(shape_type, freq, noise)
 
-    threshold = find_threshold(
-        field,
-        target_density
-    )
+    threshold = find_threshold(field, target_density)
 
-    voxels = field_to_voxels(
-        field,
-        threshold
-    )
+    voxels = field_to_voxels(field, threshold)
 
-    return (
-        voxels,
-        density(voxels),
-        threshold
-    )
+    return voxels, density(voxels), threshold
