@@ -1,52 +1,65 @@
 import json
 import os
 import numpy as np
-from generator import generate_density_matched_lattice, TARGET_DENSITY, BOX_SIZE, SOLID_VOLUME
+from generator import generate_lattice, BOX_SIZE
 
-VOXEL_RESOLUTION = 32
+VOXEL_RESOLUTION = 64
+TARGET_DENSITY = 0.3
 amount = 10
 
 DATASET_DIR = os.path.join("data", "samples")
 os.makedirs(DATASET_DIR, exist_ok=True)
 
+
 for i in range(amount):
 
-    sample_dir = os.path.join(
-        DATASET_DIR,
-        f"sample_{i:06d}"
-    )
+    sample_dir = os.path.join(DATASET_DIR, f"sample_{i:06d}")
     os.makedirs(sample_dir, exist_ok=True)
 
+    # ------------------
+    # random TPMS params
+    # ------------------
     c1 = np.random.uniform(-1.5, 1.5)
     c2 = np.random.uniform(-1.5, 1.5)
     c3 = np.random.uniform(-1.5, 1.5)
     c4 = np.random.uniform(-1.0, 1.0)
     c5 = np.random.uniform(-0.5, 0.5)
 
-    if abs(c1)+abs(c2)+abs(c3)+abs(c4)+abs(c5) < 0.2:
+    # avoid degenerate field
+    if abs(c1) + abs(c2) + abs(c3) + abs(c4) + abs(c5) < 0.2:
         c1 = 1.0
 
     params = [c1, c2, c3, c4, c5]
 
-    mesh, voxels, actual_density, thickness = (
-        generate_density_matched_lattice(
-            params,
-            target_density=TARGET_DENSITY
-        )
+    # ------------------
+    # generate lattice
+    # ------------------
+    mesh, voxels, voxel_density, thickness = generate_lattice(
+        params,
+        target_density=TARGET_DENSITY
     )
 
+    # ------------------
+    # mesh cleanup (safe for ANSYS)
+    # ------------------
     mesh.process(validate=True)
+
     volume = float(mesh.volume)
     surface_area = float(mesh.area)
-    actual_density = volume / SOLID_VOLUME
+
+    # ❗ IMPORTANT FIX:
+    # DO NOT use mesh volume for density
+    actual_density = voxel_density
 
     # ------------------
     # Save STL
     # ------------------
-
     stl_path = os.path.join(sample_dir, "lattice.stl")
     mesh.export(stl_path)
 
+    # ------------------
+    # Save voxels
+    # ------------------
     np.savez_compressed(
         os.path.join(sample_dir, "voxels.npz"),
         voxels=voxels
@@ -55,14 +68,13 @@ for i in range(amount):
     # ------------------
     # Metadata
     # ------------------
-
     metadata = {
         "sample_id": f"sample_{i:06d}",
 
         "generation": {
             "target_density": TARGET_DENSITY,
-            "actual_density": actual_density,
-            "thickness": thickness
+            "actual_density": float(actual_density),
+            "thickness": float(thickness)
         },
 
         "parameters": {
@@ -80,22 +92,18 @@ for i in range(amount):
 
         "voxelization": {
             "resolution": VOXEL_RESOLUTION,
-            "occupancy": float(np.mean(voxels))
+            "occupancy": float(voxel_density)
         },
 
         "box_size": BOX_SIZE
     }
 
-    with open(
-        os.path.join(sample_dir, "metadata.json"),
-        "w"
-    ) as f:
+    with open(os.path.join(sample_dir, "metadata.json"), "w") as f:
         json.dump(metadata, f, indent=4)
 
     # ------------------
-    # Labels (empty for now)
+    # Labels placeholder
     # ------------------
-
     labels = {
         "effective_modulus": None,
         "peak_force": None,
@@ -103,20 +111,16 @@ for i in range(amount):
         "sea": None
     }
 
-    with open(
-        os.path.join(sample_dir, "labels.json"),
-        "w"
-    ) as f:
+    with open(os.path.join(sample_dir, "labels.json"), "w") as f:
         json.dump(labels, f, indent=4)
 
-
-    occupancy = np.mean(voxels)
-
+    # ------------------
+    # Debug print (fixed)
+    # ------------------
     print(
         f"sample_{i:06d}",
         voxels.shape,
         f"density={actual_density:.3f}",
-        f"occupancy={occupancy:.3f}"
-        "saved:",
-        voxels.shape
+        f"occupancy={voxel_density:.3f}",
+        "saved"
     )

@@ -1,101 +1,124 @@
 import os
 import numpy as np
 import trimesh
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, binary_opening, binary_closing
 
 OUTPUT_DIR = os.path.join("data", "generated_stl")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-TARGET_DENSITY = 0.20  
 BOX_SIZE = 10.0
 SOLID_VOLUME = BOX_SIZE ** 3
-RESOLUTION = 32
+RESOLUTION = 64
 
+
+# -----------------------------
+# TPMS FIELD
+# -----------------------------
 def compute_generalized_tpms(X, Y, Z, params):
     c1, c2, c3, c4, c5 = params
-    term1 = c1 * np.sin(X) * np.cos(Y)
-    term2 = c2 * np.sin(Y) * np.cos(Z)
-    term3 = c3 * np.sin(Z) * np.cos(X)
-    term4 = c4 * np.cos(X) * np.cos(Y) * np.cos(Z)
-    term5 = c5 * (np.cos(2*X) + np.cos(2*Y) + np.cos(2*Z))
-    return term1 + term2 + term3 + term4 + term5
 
-def compute_density_for_thickness(params, thickness, res=40):
+    return (
+        c1 * np.sin(X) * np.cos(Y) +
+        c2 * np.sin(Y) * np.cos(Z) +
+        c3 * np.sin(Z) * np.cos(X) +
+        c4 * np.cos(X) * np.cos(Y) * np.cos(Z) +
+        c5 * (np.cos(2*X) + np.cos(2*Y) + np.cos(2*Z))
+    )
 
+
+# -----------------------------
+# FIELD GENERATION (CORE)
+# -----------------------------
+def generate_field(params, res):
     x = np.linspace(0, 2*np.pi, res, endpoint=False)
 
     X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
 
-    X = X / (2*np.pi) * BOX_SIZE
-    Y = Y / (2*np.pi) * BOX_SIZE
-    Z = Z / (2*np.pi) * BOX_SIZE
+    # normalize to [0, BOX_SIZE]
+    scale = BOX_SIZE / (2*np.pi)
+    X *= scale
+    Y *= scale
+    Z *= scale
 
-    pitch = BOX_SIZE / res
+    field = compute_generalized_tpms(X, Y, Z, params)
 
-    matrix = compute_generalized_tpms(X, Y, Z, params)
+    # smooth ONLY field (not binary)
+    field = gaussian_filter(field, sigma=0.8)
 
-    matrix_smooth = gaussian_filter(matrix, sigma=0.8)
+    return field
 
-    binary_mask = matrix_smooth < thickness
 
+# -----------------------------
+# GEOMETRY FROM FIELD
+# -----------------------------
+def field_to_mesh(field, pitch):
     mesh = trimesh.voxel.ops.matrix_to_marching_cubes(
-        matrix_smooth,
+        field,
         pitch=pitch
     )
 
-    current_density = binary_mask.mean()
+    mesh.update_faces(mesh.nondegenerate_faces())
+    mesh.update_faces(mesh.unique_faces())
+    mesh.remove_unreferenced_vertices()
+    mesh.remove_infinite_values()
 
-    return mesh, current_density, binary_mask
+    return mesh
 
-def generate_density_matched_lattice(params, target_density, tolerance=0.01):
-    low = 0.01
-    high = 3.0
 
-    for _ in range(15):
+# -----------------------------
+# DENSITY (STABLE METRIC)
+# -----------------------------
+def compute_density(field, threshold):
+    binary = field < threshold
 
-        mid_thickness = (low + high) / 2
+    # remove 1-voxel noise
+    binary = binary_closing(binary, np.ones((2,2,2)))
+    binary = binary_opening(binary, np.ones((2,2,2)))
 
-        mesh, current_density, binary_mask = (
-            compute_density_for_thickness(
-                params,
-                mid_thickness,
-                res=RESOLUTION
-            )
-        )
+    return binary.mean(), binary
 
-        if abs(current_density - target_density) < tolerance:
 
-            mesh, current_density, binary_mask = (
-                compute_density_for_thickness(
-                    params,
-                    mid_thickness,
-                    res=RESOLUTION
-                )
-            )
+# -----------------------------
+# THICKNESS SOLVER (MONOTONIC)
+# -----------------------------
+def find_thickness(field, target_density, res, tol=0.01, max_iter=20):
 
-            return (
-                mesh,
-                binary_mask,
-                current_density,
-                mid_thickness
-            )
+    low, high = np.min(field), np.max(field)
 
-        if current_density < target_density:
-            low = mid_thickness
+    best_t = None
+    best_diff = 1e9
+
+    for _ in range(max_iter):
+
+        t = 0.5 * (low + high)
+
+        density, _ = compute_density(field, t)
+        diff = density - target_density
+
+        if abs(diff) < best_diff:
+            best_diff = abs(diff)
+            best_t = t
+
+        if abs(diff) < tol:
+            return t
+
+        if density < target_density:
+            low = t
         else:
-            high = mid_thickness
+            high = t
 
-    mesh, current_density, binary_mask = (
-        compute_density_for_thickness(
-            params,
-            mid_thickness,
-            res=RESOLUTION
-        )
-    )
+    return best_t
 
-    return (
-        mesh,
-        binary_mask,
-        current_density,
-        mid_thickness
-    )
+
+# -----------------------------
+# MAIN GENERATION PIPELINE
+# -----------------------------
+def generate_lattice(params, target_density=0.2):
+
+    pitch = BOX_SIZE / RESOLUTION
+    field = generate_field(params, RESOLUTION)
+    thickness = find_thickness(field, target_density, RESOLUTION)
+    density, binary = compute_density(field, thickness)
+    mesh = field_to_mesh(field, pitch)
+
+    return mesh, binary, density, thickness
