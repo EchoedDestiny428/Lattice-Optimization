@@ -1,52 +1,41 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-BOX_SIZE = 10.0
 RESOLUTION = 20
+BOX_SIZE = 10.0
 
 
-def tpms(X, Y, Z, p):
-    c1, c2, c3, c4, c5 = p
-
+# -----------------------------
+# TPMS FIELD
+# -----------------------------
+def gyroid(X, Y, Z):
     return (
-        c1*np.sin(X)*np.cos(Y)
-        + c2*np.sin(Y)*np.cos(Z)
-        + c3*np.sin(Z)*np.cos(X)
-        + c4*np.cos(X)*np.cos(Y)*np.cos(Z)
-        + c5*(np.cos(2*X)+np.cos(2*Y)+np.cos(2*Z))
+        np.sin(X)*np.cos(Y) +
+        np.sin(Y)*np.cos(Z) +
+        np.sin(Z)*np.cos(X)
     )
 
 
-def generate_field(params):
+def generate_field(shape_type="gyroid", freq=1.0, noise=0.05):
 
-    x = np.linspace(
-        0,
-        2*np.pi,
-        RESOLUTION,
-        endpoint=False
-    )
+    x = np.linspace(0, 2*np.pi*freq, RESOLUTION, endpoint=False)
+    X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
 
-    X, Y, Z = np.meshgrid(
-        x, x, x,
-        indexing="ij"
-    )
+    if shape_type == "gyroid":
+        field = gyroid(X, Y, Z)
+    else:
+        raise ValueError("unknown shape")
 
-    field = tpms(X, Y, Z, params)
+    field = (field - field.mean()) / (field.std() + 1e-8)
 
-    field = (
-        field - field.mean()
-    ) / (
-        field.std() + 1e-8
-    )
+    field += noise * np.random.randn(*field.shape)
 
-    field = gaussian_filter(
-        field,
-        sigma=0.25
-    )
-
-    return field
+    return gaussian_filter(field, sigma=0.25)
 
 
+# -----------------------------
+# VOXELIZATION
+# -----------------------------
 def field_to_voxels(field, threshold):
     return field < threshold
 
@@ -55,29 +44,22 @@ def density(voxels):
     return float(voxels.mean())
 
 
-def find_threshold(
-    field,
-    target=0.3,
-    tol=0.005,
-    max_iter=30
-):
+# -----------------------------
+# threshold solve
+# -----------------------------
+def find_threshold(field, target=0.3):
 
-    lo = float(field.min())
-    hi = float(field.max())
+    lo, hi = -2.0, 2.0
+    best_mid = 0
 
-    best_mid = 0.0
-
-    for _ in range(max_iter):
-
-        mid = 0.5 * (lo + hi)
-
+    for _ in range(25):
+        mid = (lo + hi) / 2
         vox = field_to_voxels(field, mid)
-
         d = density(vox)
 
         best_mid = mid
 
-        if abs(d - target) < tol:
+        if abs(d - target) < 0.01:
             return mid
 
         if d < target:
@@ -88,25 +70,13 @@ def find_threshold(
     return best_mid
 
 
-def generate_lattice(
-    params,
-    target_density=0.3
-):
+# -----------------------------
+# MAIN API
+# -----------------------------
+def generate_lattice(shape_type="gyroid", target_density=0.3, freq=1.0, noise=0.05):
 
-    field = generate_field(params)
+    field = generate_field(shape_type, freq, noise)
+    threshold = find_threshold(field, target_density)
+    voxels = field_to_voxels(field, threshold)
 
-    threshold = find_threshold(
-        field,
-        target_density
-    )
-
-    voxels = field_to_voxels(
-        field,
-        threshold
-    )
-
-    return (
-        voxels,
-        density(voxels),
-        threshold
-    )
+    return voxels, density(voxels), threshold
