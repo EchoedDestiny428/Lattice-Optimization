@@ -1,7 +1,6 @@
 import json
 import os
 import numpy as np
-from voxelizer import mesh_to_voxels
 from generator import generate_density_matched_lattice, TARGET_DENSITY, BOX_SIZE, SOLID_VOLUME
 
 VOXEL_RESOLUTION = 32
