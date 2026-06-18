@@ -29,9 +29,11 @@ for i in range(amount):
 
     params = [c1, c2, c3, c4, c5]
 
-    mesh = generate_density_matched_lattice(
-        params,
-        target_density=TARGET_DENSITY
+    mesh, voxels, actual_density, thickness = (
+        generate_density_matched_lattice(
+            params,
+            target_density=TARGET_DENSITY
+        )
     )
 
     mesh.process(validate=True)
