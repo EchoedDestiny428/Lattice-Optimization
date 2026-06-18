@@ -1,51 +1,28 @@
 import os
 import numpy as np
-from mapdlgen import voxels_to_mapdl, BOX_SIZE
+from mapdlgen import voxels_to_mapdl
 
 DATASET_DIR = "data/samples"
 
-for sample_name in sorted(os.listdir(DATASET_DIR)):
+for name in sorted(os.listdir(DATASET_DIR)):
 
-    sample_dir = os.path.join(DATASET_DIR, sample_name)
-    voxel_path = os.path.join(sample_dir, "voxels.npy")
+    sample_dir = os.path.join(DATASET_DIR, name)
 
-    if not os.path.isfile(voxel_path):
+    voxel_path = os.path.join(sample_dir, "voxels.npz")
+
+    if not os.path.exists(voxel_path):
         continue
 
-    print(f"\n[SIM] loading {voxel_path}")
+    print(f"\nLoading {name}")
 
-    voxels = np.load(voxel_path)
+    data = np.load(voxel_path)
 
-    # -----------------------
-    # MAPDL BUILD
-    # -----------------------
+    print("Keys:", data.files)
+
+    voxels = data["voxels"]
+
+    print("Voxel shape:", voxels.shape)
+
     mapdl = voxels_to_mapdl(voxels)
 
-    # -----------------------
-    # BOUNDARY CONDITIONS
-    # -----------------------
-
-    # bottom fixed
-    mapdl.nsel("S", "LOC", "Z", 0)
-    mapdl.d("ALL", "ALL", 0)
-    mapdl.allsel()
-
-    # top compression
-    mapdl.nsel("S", "LOC", "Z", BOX_SIZE)
-    mapdl.d("ALL", "UZ", -0.1)
-    mapdl.allsel()
-
-    # -----------------------
-    # SOLVE
-    # -----------------------
-    mapdl.run("/SOLU")
-    mapdl.antype("STATIC")
-    mapdl.solve()
-    mapdl.finish()
-
-    # -----------------------
-    # CLEAN EXIT
-    # -----------------------
-    mapdl.exit()
-
-    print(f"[SIM] done {sample_name}")
+    print("MAPDL model created")
