@@ -1,54 +1,67 @@
 import json
 import os
+import shutil
 import numpy as np
-from generator import generate_lattice, BOX_SIZE
+
+from generator import (
+    generate_lattice,
+    BOX_SIZE,
+    RESOLUTION
+)
 
 # ------------------
 # SETTINGS
 # ------------------
-RESOLUTION = 20
-TARGET_DENSITY = 0.3
-amount = 10
+TARGET_DENSITY = 0.30
+NUM_SAMPLES = 10
 
 DATASET_DIR = os.path.join("data", "samples")
+
+# optional: start fresh each run
+if os.path.exists(DATASET_DIR):
+    shutil.rmtree(DATASET_DIR)
+
 os.makedirs(DATASET_DIR, exist_ok=True)
 
 
 # ------------------
-# DATA GENERATION LOOP
+# SAMPLE GENERATION
 # ------------------
-for i in range(amount):
+for i in range(NUM_SAMPLES):
 
-    sample_dir = os.path.join(DATASET_DIR, f"sample_{i:06d}")
+    sample_id = f"sample_{i:06d}"
+
+    sample_dir = os.path.join(
+        DATASET_DIR,
+        sample_id
+    )
+
     os.makedirs(sample_dir, exist_ok=True)
 
     # ------------------
-    # TPMS parameters (stable sampling)
+    # TPMS parameters
     # ------------------
     c1 = np.random.uniform(0.5, 1.0) * np.random.choice([-1, 1])
     c2 = np.random.uniform(0.5, 1.0) * np.random.choice([-1, 1])
     c3 = np.random.uniform(0.5, 1.0) * np.random.choice([-1, 1])
+
     c4 = np.random.uniform(0.1, 0.6) * np.random.choice([-1, 1])
     c5 = np.random.uniform(0.05, 0.3) * np.random.choice([-1, 1])
 
     params = [c1, c2, c3, c4, c5]
 
     # ------------------
-    # GENERATE LATTICE (VOXELS ONLY)
+    # Generate lattice
     # ------------------
     voxels, voxel_density, threshold = generate_lattice(
         params,
         target_density=TARGET_DENSITY
     )
 
-    # ------------------
-    # BASIC STATS
-    # ------------------
-    shape = voxels.shape
     occupancy = float(voxel_density)
 
     # ------------------
-    # SAVE VOXELS (THIS IS YOUR FEM INPUT LATER)
+    # Save voxel grid
     # ------------------
     np.savez_compressed(
         os.path.join(sample_dir, "voxels.npz"),
@@ -56,10 +69,10 @@ for i in range(amount):
     )
 
     # ------------------
-    # METADATA
+    # Metadata
     # ------------------
     metadata = {
-        "sample_id": f"sample_{i:06d}",
+        "sample_id": sample_id,
 
         "generation": {
             "target_density": TARGET_DENSITY,
@@ -77,20 +90,24 @@ for i in range(amount):
 
         "grid": {
             "resolution": RESOLUTION,
-            "shape": list(shape),
+            "shape": list(voxels.shape),
             "box_size": BOX_SIZE
         },
 
         "voxelization": {
-            "occupancy": occupancy
+            "occupancy": occupancy,
+            "solid_voxels": int(voxels.sum())
         }
     }
 
-    with open(os.path.join(sample_dir, "metadata.json"), "w") as f:
+    with open(
+        os.path.join(sample_dir, "metadata.json"),
+        "w"
+    ) as f:
         json.dump(metadata, f, indent=4)
 
     # ------------------
-    # LABELS placeholder
+    # Placeholder labels
     # ------------------
     labels = {
         "effective_modulus": None,
@@ -99,15 +116,17 @@ for i in range(amount):
         "sea": None
     }
 
-    with open(os.path.join(sample_dir, "labels.json"), "w") as f:
+    with open(
+        os.path.join(sample_dir, "labels.json"),
+        "w"
+    ) as f:
         json.dump(labels, f, indent=4)
 
-    # ------------------
-    # DEBUG
-    # ------------------
     print(
-        f"{sample_dir}",
-        shape,
+        f"{sample_id}",
+        f"shape={voxels.shape}",
         f"occupancy={occupancy:.3f}",
-        "saved"
+        f"solid_voxels={int(voxels.sum())}"
     )
+
+print("\nDataset generation complete.")
