@@ -1,10 +1,10 @@
 import json
 import os
 import numpy as np
-import trimesh
+from voxelizer import mesh_to_voxels
 from generator import generate_density_matched_lattice, TARGET_DENSITY, BOX_SIZE, SOLID_VOLUME
 
-VOXEL_RESOLUTION = 64
+VOXEL_RESOLUTION = 32
 amount = 10
 
 DATASET_DIR = os.path.join("data", "samples")
@@ -43,24 +43,7 @@ for i in range(amount):
     # Voxelization
     # ------------------
 
-    pitch = BOX_SIZE / VOXEL_RESOLUTION
-
-    voxel_grid = mesh.voxelized(pitch)
-
-    voxels = voxel_grid.matrix.astype(np.uint8)
-
-    fixed_voxels = np.zeros(
-        (VOXEL_RESOLUTION,
-        VOXEL_RESOLUTION,
-        VOXEL_RESOLUTION),
-        dtype=np.uint8
-    )
-
-    sx = min(voxels.shape[0], VOXEL_RESOLUTION)
-    sy = min(voxels.shape[1], VOXEL_RESOLUTION)
-    sz = min(voxels.shape[2], VOXEL_RESOLUTION)
-
-    fixed_voxels[:sx, :sy, :sz] = voxels[:sx, :sy, :sz]
+    fixed_voxels = mesh_to_voxels(mesh, resolution=VOXEL_RESOLUTION)
 
     # ------------------
     # Save STL
@@ -100,7 +83,8 @@ for i in range(amount):
         },
 
         "voxelization": {
-            "resolution": VOXEL_RESOLUTION
+            "resolution": VOXEL_RESOLUTION,
+            "occupancy": float(np.mean(fixed_voxels))
         },
 
         "box_size": BOX_SIZE
@@ -128,3 +112,15 @@ for i in range(amount):
         "w"
     ) as f:
         json.dump(labels, f, indent=4)
+
+
+    occupancy = np.mean(fixed_voxels)
+
+    print(
+        f"sample_{i:06d}",
+        fixed_voxels.shape,
+        f"density={actual_density:.3f}",
+        f"occupancy={occupancy:.3f}"
+        "saved:",
+        fixed_voxels.shape
+    )
