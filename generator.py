@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import trimesh
+from scipy.ndimage import gaussian_filter
 
 OUTPUT_DIR = os.path.join("data", "generated_stl")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -20,29 +21,29 @@ def compute_generalized_tpms(X, Y, Z, params):
     return term1 + term2 + term3 + term4 + term5
 
 def compute_density_for_thickness(params, thickness, res=40):
-    x = np.linspace(0, 2*np.pi, res)
 
-    X, Y, Z = np.meshgrid(
-        x, x, x,
-        indexing="ij"
-    )
+    x = np.linspace(0, 2*np.pi, res, endpoint=False)
 
-    matrix = compute_generalized_tpms(
-        X, Y, Z, params
-    )
+    X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
 
-    binary_mask = (
-        np.abs(matrix) < thickness
-    ).astype(np.uint8)
+    X = X / (2*np.pi) * BOX_SIZE
+    Y = Y / (2*np.pi) * BOX_SIZE
+    Z = Z / (2*np.pi) * BOX_SIZE
+
+    pitch = BOX_SIZE / res
+
+    matrix = compute_generalized_tpms(X, Y, Z, params)
+
+    matrix_smooth = gaussian_filter(matrix, sigma=0.8)
+
+    binary_mask = matrix_smooth < thickness
 
     mesh = trimesh.voxel.ops.matrix_to_marching_cubes(
-        binary_mask,
-        pitch=BOX_SIZE/res
+        matrix_smooth,
+        pitch=pitch
     )
 
-    current_density = (
-        mesh.volume / SOLID_VOLUME
-    )
+    current_density = binary_mask.mean()
 
     return mesh, current_density, binary_mask
 
