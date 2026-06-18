@@ -2,27 +2,16 @@ import os
 import numpy as np
 from mapdlgen import voxels_to_mapdl
 
-DATASET_DIR = "data/samples"
+sample_dir = "data/samples/sample_000000"
 
-for name in sorted(os.listdir(DATASET_DIR)):
+data = np.load(os.path.join(sample_dir, "voxels.npz"))
+voxels = data["voxels"]
 
-    sample_dir = os.path.join(DATASET_DIR, name)
+print("Voxel shape:", voxels.shape)
 
-    voxel_path = os.path.join(sample_dir, "voxels.npz")
+mapdl = voxels_to_mapdl(voxels)
 
-    if not os.path.exists(voxel_path):
-        continue
+print("MAPDL model created")
 
-    print(f"\nLoading {name}")
-
-    data = np.load(voxel_path)
-
-    print("Keys:", data.files)
-
-    voxels = data["voxels"]
-
-    print("Voxel shape:", voxels.shape)
-
-    mapdl = voxels_to_mapdl(voxels)
-
-    print("MAPDL model created")
+print("Nodes:", mapdl.mesh.n_node)
+print("Elements:", mapdl.mesh.n_elem)
