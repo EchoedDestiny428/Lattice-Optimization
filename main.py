@@ -99,6 +99,10 @@ for i in range(amount):
             "relative_density": actual_density
         },
 
+        "voxelization": {
+            "resolution": VOXEL_RESOLUTION
+        },
+
         "box_size": BOX_SIZE
     }
 
