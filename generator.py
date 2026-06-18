@@ -1,13 +1,8 @@
-import os
 import numpy as np
 import trimesh
-from scipy.ndimage import gaussian_filter, binary_opening, binary_closing
-
-OUTPUT_DIR = os.path.join("data", "generated_stl")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+from scipy.ndimage import gaussian_filter
 
 BOX_SIZE = 10.0
-SOLID_VOLUME = BOX_SIZE ** 3
 RESOLUTION = 64
 
 
@@ -27,98 +22,95 @@ def compute_generalized_tpms(X, Y, Z, params):
 
 
 # -----------------------------
-# FIELD GENERATION (CORE)
+# FIELD GENERATION (CLEAN PERIODIC VERSION)
 # -----------------------------
 def generate_field(params, res):
+
     x = np.linspace(0, 2*np.pi, res, endpoint=False)
 
     X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
 
-    # normalize to [0, BOX_SIZE]
-    scale = BOX_SIZE / (2*np.pi)
-    X *= scale
-    Y *= scale
-    Z *= scale
-
+    # keep periodic domain ONLY (important fix)
     field = compute_generalized_tpms(X, Y, Z, params)
 
-    # smooth ONLY field (not binary)
-    field = gaussian_filter(field, sigma=0.8)
+    # light smoothing ONLY (avoid topology destruction)
+    field = gaussian_filter(field, sigma=0.3)
 
     return field
 
 
 # -----------------------------
-# GEOMETRY FROM FIELD
+# VOXELIZATION (NO MORPHOLOGY)
 # -----------------------------
-def field_to_mesh(field, pitch):
+def field_to_voxels(field, threshold):
+
+    # NO closing/opening → preserves monotonic density
+    return field < threshold
+
+
+# -----------------------------
+# DENSITY (TRUE MONOTONIC METRIC)
+# -----------------------------
+def compute_density(voxels):
+    return float(np.mean(voxels))
+
+
+# -----------------------------
+# THICKNESS SOLVER (ROBUST BISECTION)
+# -----------------------------
+def find_thickness(field, target_density, tol=0.01, max_iter=25):
+
+    low, high = np.min(field), np.max(field)
+
+    for _ in range(max_iter):
+
+        mid = 0.5 * (low + high)
+
+        voxels = field_to_voxels(field, mid)
+        density = compute_density(voxels)
+
+        if abs(density - target_density) < tol:
+            return mid
+
+        # monotonic assumption restored
+        if density < target_density:
+            low = mid
+        else:
+            high = mid
+
+    return mid
+
+
+# -----------------------------
+# VOXEL → MESH (SAFE FOR ANSYS)
+# -----------------------------
+def voxels_to_mesh(voxels):
+
+    pitch = BOX_SIZE / voxels.shape[0]
+
     mesh = trimesh.voxel.ops.matrix_to_marching_cubes(
-        field,
+        voxels.astype(np.uint8),
         pitch=pitch
     )
 
-    mesh.update_faces(mesh.nondegenerate_faces())
-    mesh.update_faces(mesh.unique_faces())
-    mesh.remove_unreferenced_vertices()
-    mesh.remove_infinite_values()
+    mesh.process(validate=True)
 
     return mesh
 
 
 # -----------------------------
-# DENSITY (STABLE METRIC)
-# -----------------------------
-def compute_density(field, threshold):
-    binary = field < threshold
-
-    # remove 1-voxel noise
-    binary = binary_closing(binary, np.ones((2,2,2)))
-    binary = binary_opening(binary, np.ones((2,2,2)))
-
-    return binary.mean(), binary
-
-
-# -----------------------------
-# THICKNESS SOLVER (MONOTONIC)
-# -----------------------------
-def find_thickness(field, target_density, res, tol=0.01, max_iter=20):
-
-    low, high = np.min(field), np.max(field)
-
-    best_t = None
-    best_diff = 1e9
-
-    for _ in range(max_iter):
-
-        t = 0.5 * (low + high)
-
-        density, _ = compute_density(field, t)
-        diff = density - target_density
-
-        if abs(diff) < best_diff:
-            best_diff = abs(diff)
-            best_t = t
-
-        if abs(diff) < tol:
-            return t
-
-        if density < target_density:
-            low = t
-        else:
-            high = t
-
-    return best_t
-
-
-# -----------------------------
-# MAIN GENERATION PIPELINE
+# MAIN PIPELINE
 # -----------------------------
 def generate_lattice(params, target_density=0.2):
 
-    pitch = BOX_SIZE / RESOLUTION
     field = generate_field(params, RESOLUTION)
-    thickness = find_thickness(field, target_density, RESOLUTION)
-    density, binary = compute_density(field, thickness)
-    mesh = field_to_mesh(field, pitch)
 
-    return mesh, binary, density, thickness
+    thickness = find_thickness(field, target_density)
+
+    voxels = field_to_voxels(field, thickness)
+
+    density = compute_density(voxels)
+
+    mesh = voxels_to_mesh(voxels)
+
+    return mesh, voxels, density, thickness

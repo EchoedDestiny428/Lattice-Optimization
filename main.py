@@ -47,8 +47,7 @@ for i in range(amount):
     volume = float(mesh.volume)
     surface_area = float(mesh.area)
 
-    # ❗ IMPORTANT FIX:
-    # DO NOT use mesh volume for density
+
     actual_density = voxel_density
 
     # ------------------
