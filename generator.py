@@ -1,36 +1,40 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-BOX_SIZE = 10.0
 RESOLUTION = 32
+BOX_SIZE = 10.0
 
 
 # -----------------------------
-# TPMS FIELD
+# TPMS FIELD (STABLE VERSION)
 # -----------------------------
-def compute_generalized_tpms(X, Y, Z, params):
-    c1, c2, c3, c4, c5 = params
+def tpms(X, Y, Z, p):
+    c1, c2, c3, c4, c5 = p
 
     return (
-        c1 * np.sin(X) * np.cos(Y) +
-        c2 * np.sin(Y) * np.cos(Z) +
-        c3 * np.sin(Z) * np.cos(X) +
-        c4 * np.cos(X) * np.cos(Y) * np.cos(Z) +
-        c5 * (np.cos(2*X) + np.cos(2*Y) + np.cos(2*Z))
+        c1*np.sin(X)*np.cos(Y) +
+        c2*np.sin(Y)*np.cos(Z) +
+        c3*np.sin(Z)*np.cos(X) +
+        c4*np.cos(X)*np.cos(Y)*np.cos(Z) +
+        c5*(np.cos(2*X)+np.cos(2*Y)+np.cos(2*Z))
     )
 
 
 # -----------------------------
-# FIELD GENERATION
+# FIELD GENERATION (FIXED)
 # -----------------------------
-def generate_field(params, res):
-    x = np.linspace(0, 2*np.pi, res, endpoint=False)
+def generate_field(params):
+    x = np.linspace(0, 2*np.pi, RESOLUTION, endpoint=False)
+
     X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
 
-    field = compute_generalized_tpms(X, Y, Z, params)
+    field = tpms(X, Y, Z, params)
 
-    # very light smoothing (do not destroy topology)
-    field = gaussian_filter(field, sigma=0.3)
+    # normalize → CRITICAL FIX
+    field = (field - field.mean()) / (field.std() + 1e-8)
+
+    # light smoothing only
+    field = gaussian_filter(field, sigma=0.25)
 
     return field
 
@@ -43,74 +47,45 @@ def field_to_voxels(field, threshold):
 
 
 # -----------------------------
-# DENSITY (MONOTONIC)
+# DENSITY
 # -----------------------------
-def compute_density(voxels):
+def density(voxels):
     return float(voxels.mean())
 
 
 # -----------------------------
-# THICKNESS SOLVER
+# THRESHOLD SOLVER (ROBUST)
 # -----------------------------
-def find_thickness(field, target_density, tol=0.01, max_iter=25):
+def find_threshold(field, target=0.3):
 
-    low, high = field.min(), field.max()
+    lo, hi = -2.0, 2.0   # FIXED DOMAIN (important!)
 
-    best_mid = None
+    for _ in range(25):
+        mid = (lo + hi) / 2
 
-    for _ in range(max_iter):
-        mid = 0.5 * (low + high)
+        vox = field_to_voxels(field, mid)
+        d = density(vox)
 
-        voxels = field_to_voxels(field, mid)
-        density = compute_density(voxels)
-
-        best_mid = mid
-
-        if abs(density - target_density) < tol:
+        if abs(d - target) < 0.01:
             return mid
 
-        if density < target_density:
-            low = mid
+        if d < target:
+            lo = mid
         else:
-            high = mid
+            hi = mid
 
     return best_mid
 
 
 # -----------------------------
-# VOXEL → FEM GRID (IMPORTANT CHANGE)
+# MAIN
 # -----------------------------
-def voxels_to_fem_grid(voxels):
-    """
-    Converts voxel occupancy directly into FEM-ready data.
-    Each voxel = potential SOLID185 element.
-    """
+def generate_lattice(params, target_density=0.3):
 
-    voxels = voxels.astype(np.uint8)
+    field = generate_field(params)
 
-    # element size
-    pitch = BOX_SIZE / voxels.shape[0]
+    threshold = find_threshold(field, target_density)
 
-    return {
-        "voxels": voxels,
-        "pitch": pitch,
-        "shape": voxels.shape
-    }
+    voxels = field_to_voxels(field, threshold)
 
-
-# -----------------------------
-# MAIN PIPELINE
-# -----------------------------
-def generate_lattice(params, target_density=0.2):
-
-    field = generate_field(params, RESOLUTION)
-
-    thickness = find_thickness(field, target_density)
-
-    voxels = field_to_voxels(field, thickness)
-
-    density = compute_density(voxels)
-
-    fem_grid = voxels_to_fem_grid(voxels)
-
-    return fem_grid, voxels, density, thickness
+    return voxels, density(voxels), threshold

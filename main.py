@@ -3,6 +3,10 @@ import os
 import numpy as np
 from generator import generate_lattice, BOX_SIZE
 
+# ------------------
+# SETTINGS
+# ------------------
+RESOLUTION = 32
 TARGET_DENSITY = 0.3
 amount = 10
 
@@ -10,46 +14,45 @@ DATASET_DIR = os.path.join("data", "samples")
 os.makedirs(DATASET_DIR, exist_ok=True)
 
 
+# ------------------
+# DATA GENERATION LOOP
+# ------------------
 for i in range(amount):
 
     sample_dir = os.path.join(DATASET_DIR, f"sample_{i:06d}")
     os.makedirs(sample_dir, exist_ok=True)
 
     # ------------------
-    # random TPMS params
+    # TPMS parameters (stable sampling)
     # ------------------
-    c1 = np.random.uniform(-1.5, 1.5)
-    c2 = np.random.uniform(-1.5, 1.5)
-    c3 = np.random.uniform(-1.5, 1.5)
-    c4 = np.random.uniform(-1.0, 1.0)
-    c5 = np.random.uniform(-0.5, 0.5)
-
-    if abs(c1) + abs(c2) + abs(c3) + abs(c4) + abs(c5) < 0.2:
-        c1 = 1.0
+    c1 = np.random.uniform(0.5, 1.0) * np.random.choice([-1, 1])
+    c2 = np.random.uniform(0.5, 1.0) * np.random.choice([-1, 1])
+    c3 = np.random.uniform(0.5, 1.0) * np.random.choice([-1, 1])
+    c4 = np.random.uniform(0.1, 0.6) * np.random.choice([-1, 1])
+    c5 = np.random.uniform(0.05, 0.3) * np.random.choice([-1, 1])
 
     params = [c1, c2, c3, c4, c5]
 
     # ------------------
-    # generate lattice
+    # GENERATE LATTICE (VOXELS ONLY)
     # ------------------
-    fem_grid, voxels, voxel_density, thickness = generate_lattice(
+    voxels, voxel_density, threshold = generate_lattice(
         params,
         target_density=TARGET_DENSITY
     )
 
     # ------------------
-    # FEM DATA (NEW REAL OUTPUT)
+    # BASIC STATS
     # ------------------
+    shape = voxels.shape
     occupancy = float(voxel_density)
-    pitch = float(fem_grid["pitch"])
-    shape = fem_grid["shape"]
 
     # ------------------
-    # SAVE VOXELS (KEEP THIS)
+    # SAVE VOXELS (THIS IS YOUR FEM INPUT LATER)
     # ------------------
     np.savez_compressed(
         os.path.join(sample_dir, "voxels.npz"),
-        voxels=voxels
+        voxels=voxels.astype(np.uint8)
     )
 
     # ------------------
@@ -61,7 +64,7 @@ for i in range(amount):
         "generation": {
             "target_density": TARGET_DENSITY,
             "actual_density": occupancy,
-            "thickness": float(thickness)
+            "threshold": float(threshold)
         },
 
         "parameters": {
@@ -72,17 +75,15 @@ for i in range(amount):
             "c5": float(c5)
         },
 
-        "fem": {
-            "resolution": shape[0],
-            "pitch": pitch,
-            "shape": list(shape)
+        "grid": {
+            "resolution": RESOLUTION,
+            "shape": list(shape),
+            "box_size": BOX_SIZE
         },
 
         "voxelization": {
             "occupancy": occupancy
-        },
-
-        "box_size": BOX_SIZE
+        }
     }
 
     with open(os.path.join(sample_dir, "metadata.json"), "w") as f:
@@ -101,8 +102,11 @@ for i in range(amount):
     with open(os.path.join(sample_dir, "labels.json"), "w") as f:
         json.dump(labels, f, indent=4)
 
+    # ------------------
+    # DEBUG
+    # ------------------
     print(
-        f"sample_{i:06d}",
+        f"{sample_dir}",
         shape,
         f"occupancy={occupancy:.3f}",
         "saved"
