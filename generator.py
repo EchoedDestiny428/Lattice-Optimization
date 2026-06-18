@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter
+from main import RESOLUTION
 
-RESOLUTION = 32
 BOX_SIZE = 10.0
 
 

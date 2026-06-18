@@ -6,7 +6,7 @@ from generator import generate_lattice, BOX_SIZE
 # ------------------
 # SETTINGS
 # ------------------
-RESOLUTION = 32
+RESOLUTION = 20
 TARGET_DENSITY = 0.3
 amount = 10
 
