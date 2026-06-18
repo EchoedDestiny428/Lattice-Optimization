@@ -78,6 +78,9 @@ for i in range(amount):
     )
 
     mesh.process(validate=True)
+    volume = float(mesh.volume)
+    surface_area = float(mesh.area)
+    actual_density = volume / SOLID_VOLUME
 
     # ------------------
     # Save STL
@@ -95,6 +98,12 @@ for i in range(amount):
     # ------------------
 
     metadata = {
+        "sample_id": f"sample_{i:06d}",
+
+        "generation": {
+            "target_density": TARGET_DENSITY
+        },
+
         "parameters": {
             "c1": float(c1),
             "c2": float(c2),
@@ -102,7 +111,13 @@ for i in range(amount):
             "c4": float(c4),
             "c5": float(c5)
         },
-        "target_density": TARGET_DENSITY,
+
+        "geometry": {
+            "volume": volume,
+            "surface_area": surface_area,
+            "relative_density": actual_density
+        },
+
         "box_size": BOX_SIZE
     }
 
@@ -117,7 +132,6 @@ for i in range(amount):
     # ------------------
 
     labels = {
-        "relative_density": None,
         "effective_modulus": None,
         "peak_force": None,
         "ea": None,
