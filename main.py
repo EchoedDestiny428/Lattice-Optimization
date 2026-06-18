@@ -42,12 +42,6 @@ for i in range(amount):
     actual_density = volume / SOLID_VOLUME
 
     # ------------------
-    # Voxelization
-    # ------------------
-
-    fixed_voxels = mesh_to_voxels(mesh, resolution=VOXEL_RESOLUTION)
-
-    # ------------------
     # Save STL
     # ------------------
 
@@ -56,7 +50,7 @@ for i in range(amount):
 
     np.savez_compressed(
         os.path.join(sample_dir, "voxels.npz"),
-        voxels=fixed_voxels
+        voxels=voxels
     )
 
     # ------------------
@@ -67,7 +61,9 @@ for i in range(amount):
         "sample_id": f"sample_{i:06d}",
 
         "generation": {
-            "target_density": TARGET_DENSITY
+            "target_density": TARGET_DENSITY,
+            "actual_density": actual_density,
+            "thickness": thickness
         },
 
         "parameters": {
@@ -81,12 +77,11 @@ for i in range(amount):
         "geometry": {
             "volume": volume,
             "surface_area": surface_area,
-            "relative_density": actual_density
         },
 
         "voxelization": {
             "resolution": VOXEL_RESOLUTION,
-            "occupancy": float(np.mean(fixed_voxels))
+            "occupancy": float(np.mean(voxels))
         },
 
         "box_size": BOX_SIZE
@@ -116,13 +111,13 @@ for i in range(amount):
         json.dump(labels, f, indent=4)
 
 
-    occupancy = np.mean(fixed_voxels)
+    occupancy = np.mean(voxels)
 
     print(
         f"sample_{i:06d}",
-        fixed_voxels.shape,
+        voxels.shape,
         f"density={actual_density:.3f}",
         f"occupancy={occupancy:.3f}"
         "saved:",
-        fixed_voxels.shape
+        voxels.shape
     )
