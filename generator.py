@@ -1,116 +1,91 @@
 import numpy as np
-import trimesh
 from scipy.ndimage import gaussian_filter
 
+RESOLUTION = 32
 BOX_SIZE = 10.0
-RESOLUTION = 64
 
 
 # -----------------------------
-# TPMS FIELD
+# TPMS FIELD (STABLE VERSION)
 # -----------------------------
-def compute_generalized_tpms(X, Y, Z, params):
-    c1, c2, c3, c4, c5 = params
+def tpms(X, Y, Z, p):
+    c1, c2, c3, c4, c5 = p
 
     return (
-        c1 * np.sin(X) * np.cos(Y) +
-        c2 * np.sin(Y) * np.cos(Z) +
-        c3 * np.sin(Z) * np.cos(X) +
-        c4 * np.cos(X) * np.cos(Y) * np.cos(Z) +
-        c5 * (np.cos(2*X) + np.cos(2*Y) + np.cos(2*Z))
+        c1*np.sin(X)*np.cos(Y) +
+        c2*np.sin(Y)*np.cos(Z) +
+        c3*np.sin(Z)*np.cos(X) +
+        c4*np.cos(X)*np.cos(Y)*np.cos(Z) +
+        c5*(np.cos(2*X)+np.cos(2*Y)+np.cos(2*Z))
     )
 
 
 # -----------------------------
-# FIELD GENERATION (CLEAN PERIODIC VERSION)
+# FIELD GENERATION (FIXED)
 # -----------------------------
-def generate_field(params, res):
-
-    x = np.linspace(0, 2*np.pi, res, endpoint=False)
+def generate_field(params):
+    x = np.linspace(0, 2*np.pi, RESOLUTION, endpoint=False)
 
     X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
 
-    # keep periodic domain ONLY (important fix)
-    field = compute_generalized_tpms(X, Y, Z, params)
+    field = tpms(X, Y, Z, params)
 
-    # light smoothing ONLY (avoid topology destruction)
-    field = gaussian_filter(field, sigma=0.3)
+    # normalize → CRITICAL FIX
+    field = (field - field.mean()) / (field.std() + 1e-8)
+
+    # light smoothing only
+    field = gaussian_filter(field, sigma=0.25)
 
     return field
 
 
 # -----------------------------
-# VOXELIZATION (NO MORPHOLOGY)
+# VOXELIZATION
 # -----------------------------
 def field_to_voxels(field, threshold):
-
-    # NO closing/opening → preserves monotonic density
     return field < threshold
 
 
 # -----------------------------
-# DENSITY (TRUE MONOTONIC METRIC)
+# DENSITY
 # -----------------------------
-def compute_density(voxels):
-    return float(np.mean(voxels))
+def density(voxels):
+    return float(voxels.mean())
 
 
 # -----------------------------
-# THICKNESS SOLVER (ROBUST BISECTION)
+# THRESHOLD SOLVER (ROBUST)
 # -----------------------------
-def find_thickness(field, target_density, tol=0.01, max_iter=25):
+def find_threshold(field, target=0.3):
 
-    low, high = np.min(field), np.max(field)
+    lo, hi = -2.0, 2.0   # FIXED DOMAIN (important!)
 
-    for _ in range(max_iter):
+    for _ in range(25):
+        mid = (lo + hi) / 2
 
-        mid = 0.5 * (low + high)
+        vox = field_to_voxels(field, mid)
+        d = density(vox)
 
-        voxels = field_to_voxels(field, mid)
-        density = compute_density(voxels)
-
-        if abs(density - target_density) < tol:
+        if abs(d - target) < 0.01:
             return mid
 
-        # monotonic assumption restored
-        if density < target_density:
-            low = mid
+        if d < target:
+            lo = mid
         else:
-            high = mid
+            hi = mid
 
     return mid
 
 
 # -----------------------------
-# VOXEL → MESH (SAFE FOR ANSYS)
+# MAIN
 # -----------------------------
-def voxels_to_mesh(voxels):
+def generate_lattice(params, target_density=0.3):
 
-    pitch = BOX_SIZE / voxels.shape[0]
+    field = generate_field(params)
 
-    mesh = trimesh.voxel.ops.matrix_to_marching_cubes(
-        voxels.astype(np.uint8),
-        pitch=pitch
-    )
+    threshold = find_threshold(field, target_density)
 
-    mesh.process(validate=True)
+    voxels = field_to_voxels(field, threshold)
 
-    return mesh
-
-
-# -----------------------------
-# MAIN PIPELINE
-# -----------------------------
-def generate_lattice(params, target_density=0.2):
-
-    field = generate_field(params, RESOLUTION)
-
-    thickness = find_thickness(field, target_density)
-
-    voxels = field_to_voxels(field, thickness)
-
-    density = compute_density(voxels)
-
-    mesh = voxels_to_mesh(voxels)
-
-    return mesh, voxels, density, thickness
+    return voxels, density(voxels), threshold
