@@ -1,5 +1,4 @@
 import numpy as np
-import trimesh
 from scipy.ndimage import gaussian_filter
 
 BOX_SIZE = 10.0
@@ -22,80 +21,81 @@ def compute_generalized_tpms(X, Y, Z, params):
 
 
 # -----------------------------
-# FIELD GENERATION (CLEAN PERIODIC VERSION)
+# FIELD GENERATION
 # -----------------------------
 def generate_field(params, res):
-
     x = np.linspace(0, 2*np.pi, res, endpoint=False)
-
     X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
 
-    # keep periodic domain ONLY (important fix)
     field = compute_generalized_tpms(X, Y, Z, params)
 
-    # light smoothing ONLY (avoid topology destruction)
+    # very light smoothing (do not destroy topology)
     field = gaussian_filter(field, sigma=0.3)
 
     return field
 
 
 # -----------------------------
-# VOXELIZATION (NO MORPHOLOGY)
+# VOXELIZATION
 # -----------------------------
 def field_to_voxels(field, threshold):
-
-    # NO closing/opening → preserves monotonic density
     return field < threshold
 
 
 # -----------------------------
-# DENSITY (TRUE MONOTONIC METRIC)
+# DENSITY (MONOTONIC)
 # -----------------------------
 def compute_density(voxels):
-    return float(np.mean(voxels))
+    return float(voxels.mean())
 
 
 # -----------------------------
-# THICKNESS SOLVER (ROBUST BISECTION)
+# THICKNESS SOLVER
 # -----------------------------
 def find_thickness(field, target_density, tol=0.01, max_iter=25):
 
-    low, high = np.min(field), np.max(field)
+    low, high = field.min(), field.max()
+
+    best_mid = None
 
     for _ in range(max_iter):
-
         mid = 0.5 * (low + high)
 
         voxels = field_to_voxels(field, mid)
         density = compute_density(voxels)
 
+        best_mid = mid
+
         if abs(density - target_density) < tol:
             return mid
 
-        # monotonic assumption restored
         if density < target_density:
             low = mid
         else:
             high = mid
 
-    return mid
+    return best_mid
 
 
 # -----------------------------
-# VOXEL → MESH (SAFE FOR ANSYS)
+# VOXEL → FEM GRID (IMPORTANT CHANGE)
 # -----------------------------
-def voxels_to_mesh(voxels):
+def voxels_to_fem_grid(voxels):
+    """
+    Converts voxel occupancy directly into FEM-ready data.
+    Each voxel = potential SOLID185 element.
+    """
 
+    voxels = voxels.astype(np.uint8)
+
+    # element size
     pitch = BOX_SIZE / voxels.shape[0]
 
-    mesh = trimesh.voxel.ops.matrix_to_marching_cubes(
-        voxels.astype(np.uint8),
-        pitch=pitch
-    )
-
-    mesh.process(validate=True)
-
-    return mesh
+    return {
+        "voxels": voxels,
+        "pitch": pitch,
+        "shape": voxels.shape
+    }
 
 
 # -----------------------------
@@ -111,6 +111,6 @@ def generate_lattice(params, target_density=0.2):
 
     density = compute_density(voxels)
 
-    mesh = voxels_to_mesh(voxels)
+    fem_grid = voxels_to_fem_grid(voxels)
 
-    return mesh, voxels, density, thickness
+    return fem_grid, voxels, density, thickness

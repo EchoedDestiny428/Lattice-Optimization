@@ -3,7 +3,6 @@ import os
 import numpy as np
 from generator import generate_lattice, BOX_SIZE
 
-VOXEL_RESOLUTION = 64
 TARGET_DENSITY = 0.3
 amount = 10
 
@@ -25,7 +24,6 @@ for i in range(amount):
     c4 = np.random.uniform(-1.0, 1.0)
     c5 = np.random.uniform(-0.5, 0.5)
 
-    # avoid degenerate field
     if abs(c1) + abs(c2) + abs(c3) + abs(c4) + abs(c5) < 0.2:
         c1 = 1.0
 
@@ -34,30 +32,20 @@ for i in range(amount):
     # ------------------
     # generate lattice
     # ------------------
-    mesh, voxels, voxel_density, thickness = generate_lattice(
+    fem_grid, voxels, voxel_density, thickness = generate_lattice(
         params,
         target_density=TARGET_DENSITY
     )
 
     # ------------------
-    # mesh cleanup (safe for ANSYS)
+    # FEM DATA (NEW REAL OUTPUT)
     # ------------------
-    mesh.process(validate=True)
-
-    volume = float(mesh.volume)
-    surface_area = float(mesh.area)
-
-
-    actual_density = voxel_density
+    occupancy = float(voxel_density)
+    pitch = float(fem_grid["pitch"])
+    shape = fem_grid["shape"]
 
     # ------------------
-    # Save STL
-    # ------------------
-    stl_path = os.path.join(sample_dir, "lattice.stl")
-    mesh.export(stl_path)
-
-    # ------------------
-    # Save voxels
+    # SAVE VOXELS (KEEP THIS)
     # ------------------
     np.savez_compressed(
         os.path.join(sample_dir, "voxels.npz"),
@@ -65,14 +53,14 @@ for i in range(amount):
     )
 
     # ------------------
-    # Metadata
+    # METADATA
     # ------------------
     metadata = {
         "sample_id": f"sample_{i:06d}",
 
         "generation": {
             "target_density": TARGET_DENSITY,
-            "actual_density": float(actual_density),
+            "actual_density": occupancy,
             "thickness": float(thickness)
         },
 
@@ -84,14 +72,14 @@ for i in range(amount):
             "c5": float(c5)
         },
 
-        "geometry": {
-            "volume": volume,
-            "surface_area": surface_area,
+        "fem": {
+            "resolution": shape[0],
+            "pitch": pitch,
+            "shape": list(shape)
         },
 
         "voxelization": {
-            "resolution": VOXEL_RESOLUTION,
-            "occupancy": float(voxel_density)
+            "occupancy": occupancy
         },
 
         "box_size": BOX_SIZE
@@ -101,7 +89,7 @@ for i in range(amount):
         json.dump(metadata, f, indent=4)
 
     # ------------------
-    # Labels placeholder
+    # LABELS placeholder
     # ------------------
     labels = {
         "effective_modulus": None,
@@ -113,13 +101,9 @@ for i in range(amount):
     with open(os.path.join(sample_dir, "labels.json"), "w") as f:
         json.dump(labels, f, indent=4)
 
-    # ------------------
-    # Debug print (fixed)
-    # ------------------
     print(
         f"sample_{i:06d}",
-        voxels.shape,
-        f"density={actual_density:.3f}",
-        f"occupancy={voxel_density:.3f}",
+        shape,
+        f"occupancy={occupancy:.3f}",
         "saved"
     )
