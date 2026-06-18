@@ -1,10 +1,9 @@
-from sim import run_simulation
-import os
-import json
+from ansys.mapdl.core import launch_mapdl
 
-stl_path = os.path.join("data", "samples", "sample_000000", "lattice.stl")
+mapdl = launch_mapdl(
+    run_location="./mapdl_run",
+    override=True,
+    loglevel="DEBUG"
+)
 
-labels = run_simulation(stl_path)
-
-with open("labels.json", "w") as f:
-    json.dump(labels, f, indent=4)
+print(mapdl)
