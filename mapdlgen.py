@@ -20,7 +20,7 @@ def voxels_to_mapdl(mapdl, voxels, box_size=0.01):
 
     # Element + Material
     mapdl.et(1, 185)  # SOLID185
-    mapdl.mp("EX", 1, 200e9)
+    mapdl.mp("EX", 1, 2e9) # assumed pla is 2.0, change as needed.
     mapdl.mp("NUXY", 1, 0.3)
 
     # Node lookup table
