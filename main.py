@@ -35,18 +35,29 @@ for i in range(NUM_SAMPLES):
         shape_type=shape_type,
         target_density=TARGET_DENSITY,
         freq=freq,
-        noise=noise
+        noise=noise,
     )
 
-    labels, n = label(voxels)
+    # --------------------------------------------------------
+    # STRICT 6-CONNECTIVITY CLEANUP (Fixes hinge/pivot errors)
+    # --------------------------------------------------------
+    # Create a 3D cross footprint (only counts face-sharing neighbors)
+    structure_6 = np.zeros((3, 3, 3), dtype=int)
+    structure_6[1, 1, :] = 1  # Z-axis
+    structure_6[1, :, 1] = 1  # Y-axis
+    structure_6[:, 1, 1] = 1  # X-axis
+
+    # Label using the strict face-sharing footprint
+    labels, n = label(voxels, structure=structure_6)
+
     sizes = np.bincount(labels.ravel())
     sizes[0] = 0
     largest = np.argmax(sizes)
-    voxels = (labels == largest)
+    voxels = labels == largest
+    # --------------------------------------------------------
 
     np.savez_compressed(
-        os.path.join(sample_dir, "voxels.npz"),
-        voxels=voxels.astype(np.uint8)
+        os.path.join(sample_dir, "voxels.npz"), voxels=voxels.astype(np.uint8)
     )
 
     metadata = {
@@ -58,7 +69,7 @@ for i in range(NUM_SAMPLES):
         "noise": float(noise),
         "resolution": RESOLUTION,
         "box_size": BOX_SIZE,
-        "solid_voxels": int(voxels.sum())
+        "solid_voxels": int(voxels.sum()),
     }
 
     with open(os.path.join(sample_dir, "metadata.json"), "w") as f:
@@ -66,10 +77,10 @@ for i in range(NUM_SAMPLES):
 
     print(sample_id, voxels.shape, density)
 
-    labels_after, n_after = label(voxels)
+    # Verify component isolation using the same strict metric
+    labels_after, n_after = label(voxels, structure=structure_6)
 
     sizes_after = []
-
     for comp in range(1, n_after + 1):
         sizes_after.append((labels_after == comp).sum())
 
