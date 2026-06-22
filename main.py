@@ -38,6 +38,12 @@ for i in range(NUM_SAMPLES):
         noise=noise
     )
 
+    labels, n = label(voxels)
+    sizes = np.bincount(labels.ravel())
+    sizes[0] = 0
+    largest = np.argmax(sizes)
+    voxels = (labels == largest)
+
     np.savez_compressed(
         os.path.join(sample_dir, "voxels.npz"),
         voxels=voxels.astype(np.uint8)
@@ -60,5 +66,12 @@ for i in range(NUM_SAMPLES):
 
     print(sample_id, voxels.shape, density)
 
-    labels, n_components = label(voxels)
-    print("Connected components:", n_components)
+    labels_after, n_after = label(voxels)
+
+    sizes_after = []
+
+    for comp in range(1, n_after + 1):
+        sizes_after.append((labels_after == comp).sum())
+
+    print("components after cleanup:", n_after)
+    print("sizes after cleanup:", sizes_after)
