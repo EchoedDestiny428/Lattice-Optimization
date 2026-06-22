@@ -50,7 +50,8 @@ for i in range(NUM_SAMPLES):
         "freq": float(freq),
         "noise": float(noise),
         "resolution": RESOLUTION,
-        "box_size": BOX_SIZE
+        "box_size": BOX_SIZE,
+        "solid_voxels": int(voxels.sum())
     }
 
     with open(os.path.join(sample_dir, "metadata.json"), "w") as f:
