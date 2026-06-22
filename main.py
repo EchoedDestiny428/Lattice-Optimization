@@ -2,6 +2,7 @@ import os
 import json
 import shutil
 import numpy as np
+from scipy.ndimage import label
 
 from generator import generate_lattice, RESOLUTION, BOX_SIZE
 
@@ -58,3 +59,6 @@ for i in range(NUM_SAMPLES):
         json.dump(metadata, f, indent=4)
 
     print(sample_id, voxels.shape, density)
+
+    labels, n_components = label(voxels)
+    print("Connected components:", n_components)
