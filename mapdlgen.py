@@ -1,15 +1,9 @@
+import os
 import numpy as np
 
 
 def voxels_to_mapdl(mapdl, voxels, box_size=0.01):
-    """Uses an existing active MAPDL instance to create a solid hexahedral mesh.
-
-    Args:
-        mapdl: The active PyMAPDL launch instance object.
-        voxels (np.ndarray): 3D binary array indicating solid voxels.
-        box_size (float): Target length of the RVE cube side (in meters).
-    """
-    # CRITICAL: Clear the previous iteration's geometry/solution from memory
+    """Blazing fast voxel meshing using direct workspace file input."""
     mapdl.clear()
     mapdl.prep7()
 
@@ -18,49 +12,53 @@ def voxels_to_mapdl(mapdl, voxels, box_size=0.01):
     dy = box_size / ny
     dz = box_size / nz
 
-    # Element + Material
     mapdl.et(1, 185)  # SOLID185
-    mapdl.mp("EX", 1, 2e9) # assumed pla is 2.0, change as needed.
+    mapdl.mp("EX", 1, 200e9)
     mapdl.mp("NUXY", 1, 0.3)
 
-    # Node lookup table
     node_map = {}
     next_node = 1
 
-    def get_node(i, j, k):
-        nonlocal next_node
-        key = (i, j, k)
-        if key in node_map:
-            return node_map[key]
+    # Save directly inside MAPDL's own active working directory
+    inp_filename = "temp_mesh.inp"
+    full_inp_path = os.path.join(mapdl.directory, inp_filename)
 
-        x = i * dx
-        y = j * dy
-        z = k * dz
+    with open(full_inp_path, "w") as f:
+        # 1. Pre-generate all grid bounding nodes via fast text stream
+        for i in range(nx + 1):
+            for j in range(ny + 1):
+                for k in range(nz + 1):
+                    x, y, z = i * dx, j * dy, k * dz
+                    f.write(f"N,{next_node},{x},{y},{z}\n")
+                    node_map[(i, j, k)] = next_node
+                    next_node += 1
 
-        mapdl.n(next_node, x, y, z)
-        node_map[key] = next_node
-        next_node += 1
-        return node_map[key]
+        # 2. Write elements
+        for i in range(nx):
+            for j in range(ny):
+                for k in range(nz):
+                    if voxels[i, j, k] == 0:
+                        continue
 
-    # Create elements
-    element_count = 0
-    for i in range(nx):
-        for j in range(ny):
-            for k in range(nz):
-                if voxels[i, j, k] == 0:
-                    continue
+                    n1 = node_map[(i, j, k)]
+                    n2 = node_map[(i + 1, j, k)]
+                    n3 = node_map[(i + 1, j + 1, k)]
+                    n4 = node_map[(i, j + 1, k)]
+                    n5 = node_map[(i, j, k + 1)]
+                    n6 = node_map[(i + 1, j, k + 1)]
+                    n7 = node_map[(i + 1, j + 1, k + 1)]
+                    n8 = node_map[(i, j + 1, k + 1)]
 
-                n1 = get_node(i, j, k)
-                n2 = get_node(i + 1, j, k)
-                n3 = get_node(i + 1, j + 1, k)
-                n4 = get_node(i, j + 1, k)
-                n5 = get_node(i, j, k + 1)
-                n6 = get_node(i + 1, j, k + 1)
-                n7 = get_node(i + 1, j + 1, k + 1)
-                n8 = get_node(i, j + 1, k + 1)
+                    f.write(f"E,{n1},{n2},{n3},{n4},{n5},{n6},{n7},{n8}\n")
 
-                mapdl.e(n1, n2, n3, n4, n5, n6, n7, n8)
-                element_count += 1
+    # Read the file natively from its own directory
+    mapdl.input(inp_filename)
+    
+    # Optional cleanup: remove the file so 1,000 runs don't clutter the disk
+    try:
+        os.remove(full_inp_path)
+    except:
+        pass
 
-    print(f"Voxel mesh rebuilt | Nodes: {len(node_map)} | Elements: {element_count}")
+    print(f"Voxel block mesh loaded instantly via file stream.")
     return mapdl

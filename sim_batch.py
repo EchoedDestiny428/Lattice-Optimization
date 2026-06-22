@@ -32,7 +32,7 @@ compiled_records = []
 # LAUNCH MAPDL ONCE (Persistent Instance)
 # ============================================================
 print("Launching single persistent MAPDL instance...")
-global_mapdl = launch_mapdl()
+global_mapdl = launch_mapdl(nproc=4)
 
 # ============================================================
 # BATCH PROCESSING LOOP
