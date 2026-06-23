@@ -120,3 +120,6 @@ print("==============================================")
 print("\nSample Comparisons (Actual vs 3D CNN Predicted):")
 for i in range(min(10, len(y_true))):
     print(f"Actual: {y_true[i]:.4f} GPa | Predicted: {y_pred[i]:.4f} GPa")
+
+torch.save(model.state_dict(), "lattice_cnn.pth")
+print("\n-> Success! Model weights saved completely to 'lattice_cnn.pth'")
