@@ -5,7 +5,7 @@ import numpy as np
 from scipy.ndimage import label
 
 from generator import generate_lattice, RESOLUTION, BOX_SIZE
-
+ 
 
 TARGET_DENSITY = 0.3
 NUM_SAMPLES = 10
