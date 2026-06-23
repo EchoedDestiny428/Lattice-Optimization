@@ -21,7 +21,7 @@ with tqdm(total=3, desc="Data Pipeline", bar_format="{l_bar}{bar}| {n_fmt}/{tota
     df = pd.read_csv(CSV_PATH)
     pbar.update(1)
     
-    df_clean = df[df["status"] == "SUCCESS"].copy()
+    df_clean = df[(df["status"] == "SUCCESS") & (df["reaction_force_fz_n"] < 0)]
     pbar.update(1)
     
     feature_cols = ["actual_density", "threshold", "freq", "noise"]
