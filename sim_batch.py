@@ -1,8 +1,8 @@
+import csv
 import json
 import os
 import sys
 import numpy as np
-import pandas as pd
 from ansys.mapdl.core import launch_mapdl
 
 from mapdlgen import voxels_to_mapdl
@@ -26,7 +26,36 @@ sample_ids = sorted(
 )
 print(f"Found {len(sample_ids)} samples to process.")
 
-compiled_records = []
+# --- LIVE CSV INITIALIZATION ---
+CSV_HEADERS = [
+    "sample_id",
+    "shape",
+    "shape_id",
+    "target_density",
+    "actual_density",
+    "threshold",
+    "freq",
+    "noise",
+    "resolution",
+    "box_size_mm",
+    "solid_voxels",
+    "reaction_force_fz_n",
+    "average_stress_pa",
+    "applied_strain",
+    "E_eff_pa",
+    "E_eff_gpa",
+    "status",
+]
+
+os.makedirs(os.path.dirname(OUTPUT_CSV), exist_ok=True)
+with open(OUTPUT_CSV, mode="w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(CSV_HEADERS)
+
+print(f"Initialized live CSV ledger at: {OUTPUT_CSV}")
+
+successful_solves = 0
+failed_solves = 0
 
 # ============================================================
 # LAUNCH MAPDL ONCE (Persistent Instance)
@@ -45,7 +74,9 @@ try:
         meta_file = os.path.join(sample_path, "metadata.json")
 
         if not (os.path.exists(voxel_file) and os.path.exists(meta_file)):
-            print(f"[{index+1}/{len(sample_ids)}] Skipping {sample_id}: Missing files.")
+            print(
+                f"[{index+1}/{len(sample_ids)}] Skipping {sample_id}: Missing files."
+            )
             continue
 
         print(f"\n--- Processing [{index+1}/{len(sample_ids)}]: {sample_id} ---")
@@ -54,12 +85,15 @@ try:
             metadata = json.load(f)
 
         box_size_mm = float(metadata.get("box_size", 10.0))
-        height = box_size_mm / 1000.0  
-        area = height * height  
-        strain = 0.01  
-        disp = strain * height  
+        height = box_size_mm / 1000.0
+        area = height * height
+        strain = 0.01
+        disp = strain * height
 
         voxels = np.load(voxel_file)["voxels"]
+
+        # Define common layout properties to pass to CSV regardless of pass/fail
+        shape_id = metadata.get("shape_id", np.nan)  # Safe fallback if old json format
 
         try:
             # Re-use the existing global_mapdl instance
@@ -103,66 +137,69 @@ try:
             stress = abs(fz) / area
             E_eff = stress / strain
 
-            print(f"-> Solved. Size: {box_size_mm}mm | E_eff: {E_eff / 1e9:.4f} GPa")
+            print(
+                f"-> Solved. Size: {box_size_mm}mm | E_eff: {E_eff / 1e9:.4f} GPa"
+            )
+            successful_solves += 1
 
-            record = {
-                "sample_id": sample_id,
-                "shape": metadata["shape"],
-                "target_density": metadata.get("target_density", 0.3),
-                "actual_density": metadata["density"],
-                "threshold": metadata["threshold"],
-                "freq": metadata["freq"],
-                "noise": metadata["noise"],
-                "resolution": metadata["resolution"],
-                "box_size_mm": box_size_mm,
-                "solid_voxels": metadata["solid_voxels"],
-                "reaction_force_fz_n": fz,
-                "average_stress_pa": stress,
-                "applied_strain": strain,
-                "E_eff_pa": E_eff,
-                "E_eff_gpa": E_eff / 1e9,
-                "status": "SUCCESS",
-            }
-            compiled_records.append(record)
+            row_data = [
+                sample_id,
+                metadata["shape"],
+                shape_id,
+                metadata.get("target_density", 0.3),
+                metadata["density"],
+                metadata["threshold"],
+                metadata["freq"],
+                metadata["noise"],
+                metadata["resolution"],
+                box_size_mm,
+                metadata["solid_voxels"],
+                fz,
+                stress,
+                strain,
+                E_eff,
+                E_eff / 1e9,
+                "SUCCESS",
+            ]
 
         except Exception as e:
             print(f"!! Error solving {sample_id}: {str(e)}")
-            record = {
-                "sample_id": sample_id,
-                "shape": metadata["shape"],
-                "target_density": metadata.get("target_density", 0.3),
-                "actual_density": metadata["density"],
-                "threshold": metadata["threshold"],
-                "freq": metadata["freq"],
-                "noise": metadata["noise"],
-                "resolution": metadata["resolution"],
-                "box_size_mm": box_size_mm,
-                "solid_voxels": metadata["solid_voxels"],
-                "reaction_force_fz_n": np.nan,
-                "average_stress_pa": np.nan,
-                "applied_strain": strain,
-                "E_eff_pa": np.nan,
-                "E_eff_gpa": np.nan,
-                "status": f"FAILED: {type(e).__name__}",
-            }
-            compiled_records.append(record)
+            failed_solves += 1
+
+            row_data = [
+                sample_id,
+                metadata["shape"],
+                shape_id,
+                metadata.get("target_density", 0.3),
+                metadata["density"],
+                metadata["threshold"],
+                metadata["freq"],
+                metadata["noise"],
+                metadata["resolution"],
+                box_size_mm,
+                metadata["solid_voxels"],
+                np.nan,
+                np.nan,
+                strain,
+                np.nan,
+                np.nan,
+                f"FAILED: {type(e).__name__}",
+            ]
+
+        # --- LIVE SAVE: Open file in append mode and flush straight to disk ---
+        with open(OUTPUT_CSV, mode="a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(row_data)
 
 finally:
-    # CRITICAL: Shut down ANSYS once the entire batch loop is finished
     print("\nClosing MAPDL instance...")
     try:
         global_mapdl.exit()
     except:
         pass
 
-# ============================================================
-# EXPORT COMPILED DATASET
-# ============================================================
-df = pd.DataFrame(compiled_records)
-df.to_csv(OUTPUT_CSV, index=False)
-
 print("\n==============================================")
 print(f"BATCH COMPLETE. Compilation saved to: {OUTPUT_CSV}")
-print(f"Successful Solves: {df[df['status']=='SUCCESS'].shape[0]}")
-print(f"Failed Solves:     {df[df['status']!='SUCCESS'].shape[0]}")
+print(f"Successful Solves: {successful_solves}")
+print(f"Failed Solves:     {failed_solves}")
 print("==============================================")
