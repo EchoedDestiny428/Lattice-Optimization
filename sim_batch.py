@@ -119,6 +119,7 @@ try:
             mapdl.allsel()
 
             # Solve
+            mapdl.eqslv("PCG")
             mapdl.solve()
 
             # Postprocessing (Text Parser)
