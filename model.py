@@ -5,30 +5,34 @@ class LatticeCNN3D(nn.Module):
     def __init__(self):
         super(LatticeCNN3D, self).__init__()
         
-        # Input tensor size: (1, 20, 20, 20)
+        # 3D Convolutional Feature Extractor
         self.features = nn.Sequential(
             # Layer 1: Detect basic structural edges/surfaces
             nn.Conv3d(in_channels=1, out_channels=16, kernel_size=3, padding=1),
             nn.BatchNorm3d(16),
             nn.ReLU(),
-            nn.MaxPool3d(kernel_size=2, stride=2), # Output dimension: (16, 10, 10, 10)
+            nn.MaxPool3d(kernel_size=2, stride=2), 
             
             # Layer 2: Detect local cell connectivity structures
             nn.Conv3d(16, 32, kernel_size=3, padding=1),
             nn.BatchNorm3d(32),
             nn.ReLU(),
-            nn.MaxPool3d(kernel_size=2, stride=2), # Output dimension: (32, 5, 5, 5)
+            nn.MaxPool3d(kernel_size=2, stride=2), 
             
             # Layer 3: Consolidate spatial features across the entire unit block
             nn.Conv3d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm3d(64),
-            nn.ReLU()                             # Output dimension: (64, 5, 5, 5)
+            nn.ReLU() 
         )
         
+        # Global Average Pooling: Automatically forces spatial dimensions to 1x1x1
+        # This decouples the network from rigid input resolution limitations (e.g., 20^3 or 32^3)
+        self.gap = nn.AdaptiveAvgPool3d((1, 1, 1))
+        
         # Regression network to output the single continuous GPa scalar value
-        # 64 channels * 5 * 5 * 5 spatial grid = 8000 flattened nodes
+        # input size is now strictly determined by the 64 output channels
         self.regressor = nn.Sequential(
-            nn.Linear(64 * 5 * 5 * 5, 128),
+            nn.Linear(64 * 1 * 1 * 1, 128),
             nn.ReLU(),
             nn.Dropout(p=0.2), # Protects model from over-memorizing training shapes
             nn.Linear(128, 32),
@@ -38,13 +42,20 @@ class LatticeCNN3D(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
-        x = x.view(x.size(0), -1) # Flatten spatial representation into a vector
+        x = self.gap(x)           # Squashes remaining spatial blocks to 1x1x1
+        x = x.view(x.size(0), -1) # Flattens cleanly down to [Batch Size, 64]
         x = self.regressor(x)
         return x
 
 if __name__ == "__main__":
-    # Test pass with dummy array mimicking our dataset batch
     model = LatticeCNN3D()
-    dummy_input = torch.randn(4, 1, 20, 20, 20) # Batch size of 4
-    output = model(dummy_input)
-    print("Model functional. Forward output tensor shape:", output.shape)
+    
+    # Verification Test 1: Traditional 20^3 resolution
+    dummy_input_20 = torch.randn(4, 1, 20, 20, 20)
+    output_20 = model(dummy_input_20)
+    print("20^3 grid pass successful. Output shape:", output_20.shape)
+    
+    # Verification Test 2: Upgraded 32^3 resolution
+    dummy_input_32 = torch.randn(4, 1, 32, 32, 32)
+    output_32 = model(dummy_input_32)
+    print("32^3 grid pass successful. Output shape:", output_32.shape)

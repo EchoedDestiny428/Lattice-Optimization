@@ -10,7 +10,7 @@ from mapdlgen import voxels_to_mapdl
 
 STL_PATH = "test.stl"
 MODEL_WEIGHTS_PATH = "lattice_cnn.pth"
-RESOLUTION = 20                         # Strictly back to 20 for your trained AI weights
+RESOLUTION = 64
 UNIVERSAL_BOX_SIZE_MM = 10.0
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
