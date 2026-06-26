@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 import numpy as np
 
-# Import the bridge and model you just created!
+# Import the bridge and model you created
 from dataset import VoxelLatticeDataset
 from model import LatticeCNN3D
 
@@ -14,9 +14,9 @@ from model import LatticeCNN3D
 # ============================================================
 CSV_PATH = "data/dataset_compiled.csv"
 SAMPLES_DIR = "data/samples"
-BATCH_SIZE = 32
-EPOCHS = 40
-LEARNING_RATE = 0.001
+BATCH_SIZE = 64
+EPOCHS = 120  # Bumped slightly to 120 to give augmented variations time to settle
+LEARNING_RATE = 1e-5  # Locked at stable 1e-5 for 3D spatial stability
 
 # Automatically leverage your RTX 4060 GPU via CUDA
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,11 +49,12 @@ print(f"-> Dataset Ready. Train batches: {len(train_loader)} | Val batches: {len
 print("\n[Stage 2/4] Initializing 3D Convolutional Network layers...")
 model = LatticeCNN3D().to(device)
 
-criterion = nn.MSELoss() # Mean Squared Error for continuous GPa regression
+# MSE Loss forces aggression on high-stiffness predictions
+criterion = nn.MSELoss() 
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
 # ============================================================
-# 4. TRAINING LOOP WITH PROGRESS TRACKING
+# 4. TRAINING LOOP WITH PROGRESS TRACKING & AUGMENTATION
 # ============================================================
 print(f"\n[Stage 3/4] Running optimization updates over {EPOCHS} epochs...\n")
 
@@ -64,11 +65,25 @@ for epoch in range(EPOCHS):
     # Progress bar linked directly across our active training mini-batches
     train_bar = tqdm(train_loader, desc=f"Epoch {epoch+1:02d}/{EPOCHS:02d}", unit="batch")
     
-    for voxel_batch, target_batch in train_bar:
+    for batch_idx, (voxel_batch, target_batch) in enumerate(train_bar):
         # Push variables to your GPU
         voxel_batch = voxel_batch.to(device)
         target_batch = target_batch.to(device)
         
+        # --------------------------------------------------------
+        # 3D DATA AUGMENTATION (On-the-Fly Symmetries)
+        # Tensor shape: [Batch, Channel, Depth, Height, Width]
+        # --------------------------------------------------------
+        # 50% chance to flip along Depth axis
+        if np.random.rand() > 0.5:
+            voxel_batch = torch.flip(voxel_batch, dims=[2])
+        # 50% chance to flip along Height axis
+        if np.random.rand() > 0.5:
+            voxel_batch = torch.flip(voxel_batch, dims=[3])
+        # 50% chance to flip along Width axis
+        if np.random.rand() > 0.5:
+            voxel_batch = torch.flip(voxel_batch, dims=[4])
+            
         # Zero gradients out from the previous step
         optimizer.zero_grad()
         
@@ -76,17 +91,25 @@ for epoch in range(EPOCHS):
         predictions = model(voxel_batch)
         loss = criterion(predictions, target_batch)
         
-        # Backward pass: Compute physics gradients and step weights
+        # Backward pass: Compute physics gradients
         loss.backward()
+
+        # Hard ceiling to prevent single-batch gradient explosions
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
         optimizer.step()
         
         running_loss += loss.item() * voxel_batch.size(0)
-        train_bar.set_postfix(Loss=f"{loss.item():.4f}")
+        
+        # Calculate real-time RUNNING average loss instead of instantaneous batch loss
+        current_running_avg = running_loss / ((batch_idx + 1) * BATCH_SIZE)
+        train_bar.set_postfix(Running_Avg_Loss=f"{current_running_avg:.4f}")
         
     epoch_loss = running_loss / len(train_dataset)
+    print(f"   -> [Epoch {epoch+1:02d} Summary] True Training Loss Average: {epoch_loss:.4f}")
     
 # ============================================================
-# 5. VALIDATION ACCURACY SCORING ($R^2$ Metric)
+# 5. VALIDATION ACCURACY SCORING (R² Metric)
 # ============================================================
 print("\n[Stage 4/4] Evaluating multi-topology predictive accuracy...")
 model.eval()
@@ -99,8 +122,9 @@ with torch.no_grad():
         voxel_batch = voxel_batch.to(device)
         predictions = model(voxel_batch)
         
-        all_targets.append(target_batch.numpy())
-        all_preds.append(predictions.cpu().numpy())
+        # Explicitly detach and move to CPU before conversion to numpy
+        all_targets.append(target_batch.detach().cpu().numpy())
+        all_preds.append(predictions.detach().cpu().numpy())
 
 # Flatten arrays to compute statistical standard metrics
 y_true = np.vstack(all_targets).flatten()
