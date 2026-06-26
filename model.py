@@ -2,60 +2,72 @@ import torch
 import torch.nn as nn
 
 class LatticeCNN3D(nn.Module):
+    """
+    Physics-Informed 3D CNN.
+    Extracts spatial features via convolutions, but explicitly calculates 
+    Volume Fraction and injects it into the final regression layers to anchor 
+    predictions in real-world Gibson-Ashby scaling laws.
+    """
     def __init__(self):
-        super(LatticeCNN3D, self).__init__()
+        super().__init__()
         
-        # 3D Convolutional Feature Extractor
+        # Deep Spatial Feature Extractor
         self.features = nn.Sequential(
-            # Layer 1: Detect basic structural edges/surfaces
-            nn.Conv3d(in_channels=1, out_channels=16, kernel_size=3, padding=1),
+            nn.Conv3d(1, 16, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm3d(16),
-            nn.ReLU(),
-            nn.MaxPool3d(kernel_size=2, stride=2), 
-            
-            # Layer 2: Detect local cell connectivity structures
-            nn.Conv3d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool3d(2), # Downsamples 32^3 -> 16^3
+
+            nn.Conv3d(16, 32, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm3d(32),
-            nn.ReLU(),
-            nn.MaxPool3d(kernel_size=2, stride=2), 
-            
-            # Layer 3: Consolidate spatial features across the entire unit block
-            nn.Conv3d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool3d(2), # Downsamples 16^3 -> 8^3
+
+            nn.Conv3d(32, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm3d(64),
-            nn.ReLU() 
+            nn.ReLU(inplace=True),
+            nn.MaxPool3d(2), # Downsamples 8^3 -> 4^3
+            
+            nn.Conv3d(64, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm3d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool3d(2)  # Downsamples 4^3 -> 2^3
         )
         
-        # Global Average Pooling: Automatically forces spatial dimensions to 1x1x1
-        # This decouples the network from rigid input resolution limitations (e.g., 20^3 or 32^3)
-        self.gap = nn.AdaptiveAvgPool3d((1, 1, 1))
-        
-        # Regression network to output the single continuous GPa scalar value
-        # input size is now strictly determined by the 64 output channels
+        # 128 channels * (2 * 2 * 2) spatial map = 1024 spatial features
+        # PLUS 1 explicit Physics Feature (Volume Fraction) = 1025 features
         self.regressor = nn.Sequential(
-            nn.Linear(64 * 1 * 1 * 1, 128),
-            nn.ReLU(),
-            nn.Dropout(p=0.2), # Protects model from over-memorizing training shapes
-            nn.Linear(128, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1)   # Single output: Predicted E_eff in GPa
+            nn.Linear(1024 + 1, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.2),
+            nn.Linear(256, 64),
+            nn.ReLU(inplace=True),
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
-        x = self.features(x)
-        x = self.gap(x)           # Squashes remaining spatial blocks to 1x1x1
-        x = x.view(x.size(0), -1) # Flattens cleanly down to [Batch Size, 64]
-        x = self.regressor(x)
-        return x
+        batch_size = x.size(0)
+        
+        # ============================================================
+        # PHYSICS INJECTION: Calculate exact volume fraction 
+        # (Total solid voxels divided by 32768 total volume)
+        # ============================================================
+        vol_fraction = torch.sum(x.view(batch_size, -1), dim=1, keepdim=True) / 32768.0
+        
+        # Extract spatial/topological features
+        out = self.features(x)
+        out = torch.flatten(out, 1)
+        
+        # Concatenate the hard physics variable with the learned spatial variables
+        out = torch.cat((out, vol_fraction), dim=1)
+        
+        # Predict stiffness based on combined data
+        out = self.regressor(out)
+        return out
 
 if __name__ == "__main__":
-    model = LatticeCNN3D()
-    
-    # Verification Test 1: Traditional 20^3 resolution
-    dummy_input_20 = torch.randn(4, 1, 20, 20, 20)
-    output_20 = model(dummy_input_20)
-    print("20^3 grid pass successful. Output shape:", output_20.shape)
-    
-    # Verification Test 2: Upgraded 32^3 resolution
-    dummy_input_32 = torch.randn(4, 1, 32, 32, 32)
-    output_32 = model(dummy_input_32)
-    print("32^3 grid pass successful. Output shape:", output_32.shape)
+    # Sanity Check
+    test_tensor = torch.randn(2, 1, 32, 32, 32)
+    net = LatticeCNN3D()
+    output = net(test_tensor)
+    print(f"Physics-Informed Check Passed! Output shape: {output.shape}")
