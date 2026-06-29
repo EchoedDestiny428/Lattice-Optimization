@@ -1,29 +1,31 @@
-import os
+from pathlib import Path
 import torch
 
-# 1. ROOT DIRECTORY (The "Base" anchor)
-# This finds where config.py is located and sets that as the root
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 1. ROOT DIRECTORY
+# This makes ROOT_DIR the absolute path to your project folder
+ROOT_DIR = Path(__file__).resolve().parent
 
 # 2. DEVICE CONFIGURATION
-# Set this once here and import it everywhere to avoid code duplication
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# 3. GEOMETRY / LATTICE SETTINGS
+# 3. DIRECTORY STRUCTURE
+DATASET_DIR = ROOT_DIR / "data"
+SAMPLES_DIR = DATASET_DIR / "samples"
+STL_DIR = DATASET_DIR / "generated_stl"
+MODELS_DIR = ROOT_DIR / "models"
+
+# 4. FILE PATHS
+CSV_PATH = DATASET_DIR / "dataset_compiled.csv"
+MODEL_WEIGHTS_PATH = MODELS_DIR / "lattice_cnn.pth"
+
+# 5. GENERATION & TRAINING SETTINGS
 RESOLUTION = 32
 BOX_SIZE_MM = 10.0
 NUM_SAMPLES = 100
+BATCH_SIZE = 64
+EPOCHS = 120
+LEARNING_RATE = 1e-5
 
-# 4. PATHS (All built relative to BASE_DIR)
-DATASET_DIR = os.path.join(BASE_DIR, "data")
-SAMPLES_DIR = os.path.join(DATASET_DIR, "samples")
-STL_DIR = os.path.join(DATASET_DIR, "generated_stl")
-CSV_PATH = os.path.join(DATASET_DIR, "dataset_compiled.csv")
-
-MODELS_DIR = os.path.join(BASE_DIR, "models")
-MODEL_WEIGHTS_PATH = os.path.join(MODELS_DIR, "lattice_cnn.pth")
-
-# 5. LEGACY / GENERATION SETTINGS
-# Since you are moving to procedural/harmonic generation, 
-# you can eventually remove these or keep them for 'baseline' reference.
-SHAPES = ["gyroid", "primitive", "diamond", "i_wp", "neovius"]
+# Ensure critical directories exist automatically
+for folder in [DATASET_DIR, SAMPLES_DIR, STL_DIR, MODELS_DIR]:
+    folder.mkdir(parents=True, exist_ok=True)

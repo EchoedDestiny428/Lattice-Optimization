@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import time
 import numpy as np
@@ -6,6 +7,7 @@ import torch
 from ansys.mapdl.core import launch_mapdl
 
 # Import your centralized config and tools
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import RESOLUTION, BOX_SIZE_MM, MODEL_WEIGHTS_PATH, DEVICE
 from src.model import LatticeCNN3D
 from src.mapdl_tools import voxels_to_mapdl

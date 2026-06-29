@@ -2,24 +2,22 @@ import os
 import json
 import shutil
 import numpy as np
-import trimesh
-from skimage import measure
-from scipy.ndimage import label
+from scipy.ndimage import label, generate_binary_structure
 
-# Import from your new structure
-from config import RESOLUTION, BOX_SIZE_MM, DATASET_DIR, STL_DIR, NUM_SAMPLES
+# Import from config and src
+from config import RESOLUTION, BOX_SIZE_MM, DATASET_DIR, NUM_SAMPLES
 from src.generator import generate_random_lattice, find_threshold
-from src.voxelizer import voxelize_stl
-
-
 
 # Clean folders
-for d in [DATASET_DIR, STL_DIR]:
-    if os.path.exists(d):
-        shutil.rmtree(d)
-    os.makedirs(d, exist_ok=True)
+if os.path.exists(DATASET_DIR):
+    shutil.rmtree(DATASET_DIR)
+os.makedirs(DATASET_DIR, exist_ok=True)
 
-print(f"Starting procedural generation of {NUM_SAMPLES} samples...")
+# Create 6-connectivity structure for label()
+# This creates a 3x3x3 grid where neighbors are connected by faces
+struct_6 = generate_binary_structure(rank=3, connectivity=1)
+
+print(f"Starting direct voxel generation of {NUM_SAMPLES} samples...")
 
 for i in range(NUM_SAMPLES):
     sample_id = f"sample_{i:06d}"
@@ -27,50 +25,35 @@ for i in range(NUM_SAMPLES):
     os.makedirs(sample_dir, exist_ok=True)
 
     # 1. Procedural Parameters
-    # Instead of specific shapes, we randomize complexity and density
     complexity = np.random.randint(2, 6) 
     target_density = np.random.uniform(0.15, 0.45)
 
     # 2. Generate Harmonic Field
     field = generate_random_lattice(complexity=complexity)
     
-    # 3. Solve for threshold to hit specific density
+    # 3. Solve for threshold
     threshold = find_threshold(field, target_density=target_density)
     
-    # Calculate actual density for metadata
-    actual_density = float((field < threshold).mean())
+    # 4. Direct Voxelization
+    # No Mesh, No STL, just a threshold cut
+    voxels_matrix = (field < threshold).astype(np.uint8)
 
-    # 4. Marching Cubes (Mesh generation)
-    verts, faces, _, _ = measure.marching_cubes(field, level=threshold)
-    mesh = trimesh.Trimesh(vertices=verts, faces=faces)
-    mesh.apply_scale(BOX_SIZE_MM / RESOLUTION)
-
-    stl_path = os.path.join(STL_DIR, f"{sample_id}.stl")
-    mesh.export(stl_path)
-
-    # 5. Voxelize (The "Ground Truth" representation)
-    voxels_matrix, _ = voxelize_stl(
-        stl_path,
-        resolution=RESOLUTION,
-        box_size_mm=BOX_SIZE_MM,
-    )
-
-    # Connectivity cleanup (keep only largest component)
-    structure_6 = np.zeros((3, 3, 3), dtype=int)
-    structure_6[1, 1, :] = 1
-    structure_6[1, :, 1] = 1
-    structure_6[:, 1, 1] = 1
-
-    labels_array, n = label(voxels_matrix, structure=structure_6)
+    # 5. Connectivity cleanup (Keep only largest component)
+    labels_array, n = label(voxels_matrix, structure=struct_6)
     sizes = np.bincount(labels_array.ravel())
     sizes[0] = 0 # Ignore background
-    largest = np.argmax(sizes)
-    voxels_matrix = labels_array == largest
+    
+    if len(sizes) > 1:
+        largest = np.argmax(sizes)
+        voxels_matrix = (labels_array == largest).astype(np.uint8)
+    
+    # Calculate final stats
+    actual_density = float(voxels_matrix.mean())
 
     # 6. Save
     np.savez_compressed(
         os.path.join(sample_dir, "voxels.npz"),
-        voxels=voxels_matrix.astype(np.uint8),
+        voxels=voxels_matrix,
     )
 
     metadata = {
@@ -82,7 +65,6 @@ for i in range(NUM_SAMPLES):
         "resolution": RESOLUTION,
         "box_size": BOX_SIZE_MM,
         "solid_voxels": int(voxels_matrix.sum()),
-        "stl_path": stl_path,
     }
 
     with open(os.path.join(sample_dir, "metadata.json"), "w") as f:

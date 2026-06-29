@@ -15,7 +15,6 @@ print("\n[Stage 1/4] Extracting and preparing data metrics...")
 df = pd.read_csv(CSV_PATH)
 df_clean = df[(df["status"] == "SUCCESS") & (df["reaction_force_fz_n"] < 0)]
 
-# 🚨 FIX: Added shape_id so the tree regressor understands TPMS topology
 feature_cols = ["shape_id", "actual_density", "threshold", "freq", "noise"]
 target_col = "E_eff_gpa"
 
