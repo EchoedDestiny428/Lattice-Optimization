@@ -1,4 +1,4 @@
-from scripts import step01_generate, step02_export_stl, step04_simulate, step05_train_cnn
+from scripts import step01_generate, step02_export_stl, step03_voxelize_stl, step04_simulate, step05_train_cnn
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent))
