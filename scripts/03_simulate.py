@@ -4,20 +4,23 @@ import os
 import sys
 import numpy as np
 from ansys.mapdl.core import launch_mapdl
+from pathlib import Path
 
 # Import constants and tools
-from config import DATASET_DIR, CSV_PATH, BOX_SIZE_MM, SAMPLES_DIR
+from config import DATASET_DIR, SAMPLES_DIR, CSV_PATH, BOX_SIZE_MM
 from src.mapdl_tools import voxels_to_mapdl
 
-if not os.path.exists(SAMPLES_DIR):
-    print(f"Error: Dataset directory '{SAMPLES_DIR}' not found.")
+# Ensure directory exists
+if not SAMPLES_DIR.exists():
+    print(f"Error: Samples directory '{SAMPLES_DIR}' not found.")
     sys.exit(1)
 
 # Find all samples
-sample_ids = sorted([d for d in os.listdir(SAMPLES_DIR) if os.path.isdir(os.path.join(SAMPLES_DIR, d))])
-print(f"Found {len(sample_ids)} samples to process.")
+# We get a list of all folders inside SAMPLES_DIR
+sample_ids = sorted([d.name for d in SAMPLES_DIR.iterdir() if d.is_dir()])
+print(f"Found {len(sample_ids)} samples to process in {SAMPLES_DIR}")
 
-# UPDATED HEADERS: Removed shape/shape_id, added complexity
+# CSV Headers
 CSV_HEADERS = [
     "sample_id", "complexity", "target_density", "actual_density", 
     "threshold", "freq", "noise", "resolution", "box_size_mm", "solid_voxels",
@@ -25,6 +28,7 @@ CSV_HEADERS = [
     "E_eff_pa", "E_eff_gpa", "status"
 ]
 
+# Initialize CSV
 os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
 with open(CSV_PATH, mode="w", newline="") as f:
     writer = csv.writer(f)
@@ -35,11 +39,13 @@ global_mapdl = launch_mapdl(nproc=4)
 
 try:
     for index, sample_id in enumerate(sample_ids):
-        sample_path = os.path.join(DATASET_DIR, sample_id)
-        voxel_file = os.path.join(sample_path, "voxels.npz")
-        meta_file = os.path.join(sample_path, "metadata.json")
+        # Corrected Path Construction: Always use SAMPLES_DIR / sample_id
+        sample_path = SAMPLES_DIR / sample_id
+        voxel_file = sample_path / "voxels.npz"
+        meta_file = sample_path / "metadata.json"
 
-        if not (os.path.exists(voxel_file) and os.path.exists(meta_file)):
+        if not (voxel_file.exists() and meta_file.exists()):
+            print(f"Skipping {sample_id}: Files missing in {sample_path}")
             continue
 
         with open(meta_file, "r") as f:
@@ -48,14 +54,14 @@ try:
         # Extraction logic
         complexity = metadata.get("complexity", 1)
         box_size = float(metadata.get("box_size", BOX_SIZE_MM))
-        height = box_size / 1000.0 # Convert mm to m for SI consistency
+        height = box_size / 1000.0  # Convert mm to m for SI consistency
         area = height * height
         strain = 0.01
         disp = strain * height
         
         voxels = np.load(voxel_file)["voxels"]
 
-        print(f"--- Processing [{index+1}/{len(sample_ids)}]: {sample_id} (Complexity: {complexity}) ---")
+        print(f"--- Processing [{index+1}/{len(sample_ids)}]: {sample_id} ---")
 
         try:
             # Map voxels to FEA

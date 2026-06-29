@@ -13,7 +13,7 @@ def voxels_to_mapdl(mapdl, voxels, box_size=0.01):
     dz = box_size / nz
 
     mapdl.et(1, 185)  # SOLID185
-    mapdl.mp("EX", 1, 200e9)
+    mapdl.mp("EX", 1, 2.0e9)
     mapdl.mp("NUXY", 1, 0.3)
 
     node_map = {}
