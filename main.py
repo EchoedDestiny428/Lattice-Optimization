@@ -1,4 +1,4 @@
-from scripts import step01_generate, step02_export_stl, step03_simulate, step05_train_cnn
+from scripts import step01_generate, step02_export_stl, step04_simulate, step05_train_cnn
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent))
@@ -13,7 +13,7 @@ def main():
     except ValueError:
         print("Please enter a valid integer.")
 
-    step03_simulate.simulate()
+    step04_simulate.simulate()
 
     
     # step05_train_cnn.train_cnn()
