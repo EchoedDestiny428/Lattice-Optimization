@@ -17,7 +17,6 @@ def simulate():
         sys.exit(1)
 
     # Find all samples
-    # We get a list of all folders inside SAMPLES_DIR
     sample_ids = sorted([d.name for d in SAMPLES_DIR.iterdir() if d.is_dir()])
     print(f"Found {len(sample_ids)} samples to process in {SAMPLES_DIR}")
 
@@ -40,13 +39,19 @@ def simulate():
 
     try:
         for index, sample_id in enumerate(sample_ids):
-            # Corrected Path Construction: Always use SAMPLES_DIR / sample_id
             sample_path = SAMPLES_DIR / sample_id
-            voxel_file = sample_path / "voxels.npz"
+            
+            # --- UPDATE: Pointing to STL-derived voxels ---
+            voxel_file = sample_path / "voxels_input.npz"
             meta_file = sample_path / "metadata.json"
 
-            if not (voxel_file.exists() and meta_file.exists()):
-                print(f"Skipping {sample_id}: Files missing in {sample_path}")
+            # Check if input file exists
+            if not voxel_file.exists():
+                print(f"Skipping {sample_id}: 'voxels_input.npz' not found. Run '03_voxelize_input.py' first.")
+                continue
+            
+            if not meta_file.exists():
+                print(f"Skipping {sample_id}: Metadata missing.")
                 continue
 
             with open(meta_file, "r") as f:
@@ -60,6 +65,7 @@ def simulate():
             strain = 0.01
             disp = strain * height
             
+            # Loading the STl-derived input
             voxels = np.load(voxel_file)["voxels"]
 
             print(f"--- Processing [{index+1}/{len(sample_ids)}]: {sample_id} ---")
