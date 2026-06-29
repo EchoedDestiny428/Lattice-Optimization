@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Add project root to path to ensure imports work
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from config import DATASET_DIR, STL_DIR
+from config import DATASET_DIR, STL_DIR, SAMPLES_DIR
 
 def voxels_to_stl(num_samples):
     """
@@ -14,16 +14,14 @@ def voxels_to_stl(num_samples):
     """
     # Ensure output directory exists
     STL_DIR.mkdir(parents=True, exist_ok=True)
-    
-    samples_dir = DATASET_DIR / "samples"
     converted_count = 0
 
-    print(f"Reading from: {samples_dir}")
+    print(f"Reading from: {SAMPLES_DIR}")
     print(f"Writing to: {STL_DIR}")
 
     for i in range(num_samples):
         folder_name = f"sample_{i:06d}"
-        sample_dir = samples_dir / folder_name
+        sample_dir = SAMPLES_DIR / folder_name
         npz_path = sample_dir / "voxels.npz"
         
         if not npz_path.exists():

@@ -6,15 +6,15 @@ import numpy as np
 from ansys.mapdl.core import launch_mapdl
 
 # Import constants and tools
-from config import DATASET_DIR, CSV_PATH, BOX_SIZE_MM
+from config import DATASET_DIR, CSV_PATH, BOX_SIZE_MM, SAMPLES_DIR
 from src.mapdl_tools import voxels_to_mapdl
 
-if not os.path.exists(DATASET_DIR):
-    print(f"Error: Dataset directory '{DATASET_DIR}' not found.")
+if not os.path.exists(SAMPLES_DIR):
+    print(f"Error: Dataset directory '{SAMPLES_DIR}' not found.")
     sys.exit(1)
 
 # Find all samples
-sample_ids = sorted([d for d in os.listdir(DATASET_DIR) if os.path.isdir(os.path.join(DATASET_DIR, d))])
+sample_ids = sorted([d for d in os.listdir(SAMPLES_DIR) if os.path.isdir(os.path.join(SAMPLES_DIR, d))])
 print(f"Found {len(sample_ids)} samples to process.")
 
 # UPDATED HEADERS: Removed shape/shape_id, added complexity

@@ -5,13 +5,13 @@ import numpy as np
 from scipy.ndimage import label, generate_binary_structure
 
 # Import from config and src
-from config import RESOLUTION, BOX_SIZE_MM, DATASET_DIR, NUM_SAMPLES
+from config import RESOLUTION, BOX_SIZE_MM, DATASET_DIR, NUM_SAMPLES, SAMPLES_DIR
 from src.generator import generate_random_lattice, find_threshold
 
 # Clean folders
-if os.path.exists(DATASET_DIR):
-    shutil.rmtree(DATASET_DIR)
-os.makedirs(DATASET_DIR, exist_ok=True)
+if os.path.exists(SAMPLES_DIR):
+    shutil.rmtree(SAMPLES_DIR)
+os.makedirs(SAMPLES_DIR, exist_ok=True)
 
 # Create 6-connectivity structure for label()
 # This creates a 3x3x3 grid where neighbors are connected by faces
@@ -21,7 +21,7 @@ print(f"Starting direct voxel generation of {NUM_SAMPLES} samples...")
 
 for i in range(NUM_SAMPLES):
     sample_id = f"sample_{i:06d}"
-    sample_dir = os.path.join(DATASET_DIR, sample_id)
+    sample_dir = os.path.join(SAMPLES_DIR, sample_id)
     os.makedirs(sample_dir, exist_ok=True)
 
     # 1. Procedural Parameters
