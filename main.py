@@ -12,8 +12,7 @@ def main():
 
     step04_simulate.simulate()
 
-    
-    # step05_train_cnn.train_cnn()
+    step05_train_cnn.train_cnn()
     
 if __name__ == "__main__":
     main()
