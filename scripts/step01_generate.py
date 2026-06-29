@@ -8,69 +8,74 @@ from scipy.ndimage import label, generate_binary_structure
 from config import RESOLUTION, BOX_SIZE_MM, DATASET_DIR, NUM_SAMPLES, SAMPLES_DIR
 from src.generator import generate_random_lattice, find_threshold
 
-# Clean folders
-if os.path.exists(SAMPLES_DIR):
-    shutil.rmtree(SAMPLES_DIR)
-os.makedirs(SAMPLES_DIR, exist_ok=True)
 
-# Create 6-connectivity structure for label()
-# This creates a 3x3x3 grid where neighbors are connected by faces
-struct_6 = generate_binary_structure(rank=3, connectivity=1)
+def generate_voxel_samples(num_samples=NUM_SAMPLES):
+    # Clean folders
+    if os.path.exists(SAMPLES_DIR):
+        shutil.rmtree(SAMPLES_DIR)
+    os.makedirs(SAMPLES_DIR, exist_ok=True)
 
-print(f"Starting direct voxel generation of {NUM_SAMPLES} samples...")
+    # Create 6-connectivity structure for label()
+    # This creates a 3x3x3 grid where neighbors are connected by faces
+    struct_6 = generate_binary_structure(rank=3, connectivity=1)
 
-for i in range(NUM_SAMPLES):
-    sample_id = f"sample_{i:06d}"
-    sample_dir = os.path.join(SAMPLES_DIR, sample_id)
-    os.makedirs(sample_dir, exist_ok=True)
+    print(f"Starting direct voxel generation of {NUM_SAMPLES} samples...")
 
-    # 1. Procedural Parameters
-    complexity = np.random.randint(2, 6) 
-    target_density = np.random.uniform(0.1, 0.5) # Target density between 10% and 50%
+    for i in range(NUM_SAMPLES):
+        sample_id = f"sample_{i:06d}"
+        sample_dir = os.path.join(SAMPLES_DIR, sample_id)
+        os.makedirs(sample_dir, exist_ok=True)
 
-    # 2. Generate Harmonic Field
-    field = generate_random_lattice(complexity=complexity)
-    
-    # 3. Solve for threshold
-    threshold = find_threshold(field, target_density=target_density)
-    
-    # 4. Direct Voxelization
-    # No Mesh, No STL, just a threshold cut
-    voxels_matrix = (field < threshold).astype(np.uint8)
+        # 1. Procedural Parameters
+        complexity = np.random.randint(2, 6) 
+        target_density = np.random.uniform(0.1, 0.5) # Target density between 10% and 50%
 
-    # 5. Connectivity cleanup (Keep only largest component)
-    labels_array, n = label(voxels_matrix, structure=struct_6)
-    sizes = np.bincount(labels_array.ravel())
-    sizes[0] = 0 # Ignore background
-    
-    if len(sizes) > 1:
-        largest = np.argmax(sizes)
-        voxels_matrix = (labels_array == largest).astype(np.uint8)
-    
-    # Calculate final stats
-    actual_density = float(voxels_matrix.mean())
+        # 2. Generate Harmonic Field
+        field = generate_random_lattice(complexity=complexity)
+        
+        # 3. Solve for threshold
+        threshold = find_threshold(field, target_density=target_density)
+        
+        # 4. Direct Voxelization
+        # No Mesh, No STL, just a threshold cut
+        voxels_matrix = (field < threshold).astype(np.uint8)
 
-    # 6. Save
-    np.savez_compressed(
-        os.path.join(sample_dir, "voxels.npz"),
-        voxels=voxels_matrix,
-    )
+        # 5. Connectivity cleanup (Keep only largest component)
+        labels_array, n = label(voxels_matrix, structure=struct_6)
+        sizes = np.bincount(labels_array.ravel())
+        sizes[0] = 0 # Ignore background
+        
+        if len(sizes) > 1:
+            largest = np.argmax(sizes)
+            voxels_matrix = (labels_array == largest).astype(np.uint8)
+        
+        # Calculate final stats
+        actual_density = float(voxels_matrix.mean())
 
-    metadata = {
-        "sample_id": sample_id,
-        "complexity": complexity,
-        "target_density": target_density,
-        "actual_density": actual_density,
-        "threshold": float(threshold),
-        "resolution": RESOLUTION,
-        "box_size": BOX_SIZE_MM,
-        "solid_voxels": int(voxels_matrix.sum()),
-    }
+        # 6. Save
+        np.savez_compressed(
+            os.path.join(sample_dir, "voxels.npz"),
+            voxels=voxels_matrix,
+        )
 
-    with open(os.path.join(sample_dir, "metadata.json"), "w") as f:
-        json.dump(metadata, f, indent=4)
+        metadata = {
+            "sample_id": sample_id,
+            "complexity": complexity,
+            "target_density": target_density,
+            "actual_density": actual_density,
+            "threshold": float(threshold),
+            "resolution": RESOLUTION,
+            "box_size": BOX_SIZE_MM,
+            "solid_voxels": int(voxels_matrix.sum()),
+        }
 
-    if i % 10 == 0:
-        print(f"{sample_id} | Complexity={complexity} | Density={actual_density:.4f}")
+        with open(os.path.join(sample_dir, "metadata.json"), "w") as f:
+            json.dump(metadata, f, indent=4)
 
-print("Generation Complete.")
+        if i % 10 == 0:
+            print(f"{sample_id} | Complexity={complexity} | Density={actual_density:.4f}")
+
+    print("Generation Complete.")
+
+if __name__ == "__main__":
+    generate_voxel_samples()

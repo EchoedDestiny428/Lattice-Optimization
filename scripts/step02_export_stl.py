@@ -85,3 +85,10 @@ if __name__ == "__main__":
         voxels_to_stl(int(user_input))
     except ValueError:
         print("Please enter a valid integer.")
+
+if __name__ == "__main__":
+    try:
+        user_input = input("Enter number of samples to process: ")
+        voxels_to_stl(int(user_input))
+    except ValueError:
+        print("Please enter a valid integer.")
