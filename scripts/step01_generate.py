@@ -26,7 +26,7 @@ for i in range(NUM_SAMPLES):
 
     # 1. Procedural Parameters
     complexity = np.random.randint(2, 6) 
-    target_density = np.random.uniform(0.15, 0.45)
+    target_density = np.random.uniform(0.1, 0.5) # Target density between 10% and 50%
 
     # 2. Generate Harmonic Field
     field = generate_random_lattice(complexity=complexity)
