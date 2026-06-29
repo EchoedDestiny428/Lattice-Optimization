@@ -6,12 +6,9 @@ sys.path.append(str(Path(__file__).resolve().parent))
 def main():
     step01_generate.generate_voxel_samples()
 
-    
-    try:
-        user_input = input("Enter number of samples to process: ")
-        step02_export_stl.voxels_to_stl(int(user_input))
-    except ValueError:
-        print("Please enter a valid integer.")
+    step02_export_stl.voxels_to_stl()
+
+    step03_voxelize_stl.run_voxelization()
 
     step04_simulate.simulate()
 

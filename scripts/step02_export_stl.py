@@ -4,44 +4,33 @@ import trimesh
 import sys
 from pathlib import Path
 
-# Add project root to path to ensure imports work
+# Add project root to path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from config import DATASET_DIR, STL_DIR, SAMPLES_DIR
+from config import SAMPLES_DIR
 
-def voxels_to_stl(num_samples):
+def voxels_to_stl():
     """
-    Converts voxel arrays in DATASET_DIR to STL meshes in STL_DIR.
+    Converts all voxel arrays in SAMPLES_DIR to STL meshes, 
+    saving them directly inside their respective sample folders.
     """
-    # Ensure output directory exists
-    STL_DIR.mkdir(parents=True, exist_ok=True)
+    if not SAMPLES_DIR.exists():
+        print(f"Error: {SAMPLES_DIR} does not exist.")
+        return
+
+    # Get all subdirectories (samples)
+    samples = sorted([d for d in SAMPLES_DIR.iterdir() if d.is_dir()])
+    
+    print(f"Found {len(samples)} samples to process.")
     converted_count = 0
 
-    print(f"Reading from: {SAMPLES_DIR}")
-    print(f"Writing to: {STL_DIR}")
-
-    for i in range(num_samples):
-        folder_name = f"sample_{i:06d}"
-        sample_dir = SAMPLES_DIR / folder_name
+    for sample_dir in samples:
         npz_path = sample_dir / "voxels.npz"
-        
+        stl_path = sample_dir / "mesh.stl"
+
         if not npz_path.exists():
             continue
-            
-        # Metadata check for density naming
-        json_path = sample_dir / "metadata.json"
-        density_str = ""
-        if json_path.exists():
-            with open(json_path, 'r') as f:
-                try:
-                    metadata = json.load(f)
-                    density = metadata.get("actual_density", 0.0)
-                    density_str = f"_d{density:.3f}"
-                except json.JSONDecodeError:
-                    pass
 
-        stl_path = STL_DIR / f"{folder_name}{density_str}.stl"
-
-        # Idempotency: Skip if already exists
+        # Idempotency: Skip if STL already exists
         if stl_path.exists():
             continue
 
@@ -55,7 +44,7 @@ def voxels_to_stl(num_samples):
                 voxel_grid = voxel_grid > 0
 
             if not np.any(voxel_grid):
-                print(f"Warning: {folder_name} is empty. Skipping.")
+                print(f"Warning: {sample_dir.name} is empty. Skipping.")
                 continue
 
             # 2. Convert to Mesh
@@ -67,28 +56,18 @@ def voxels_to_stl(num_samples):
                 trimesh.repair.fill_holes(mesh)
                 trimesh.repair.fix_normals(mesh)
 
-            # 4. Export
+            # 4. Export to the sample directory
             mesh.export(stl_path)
             converted_count += 1
             
-            if i % 10 == 0:
-                print(f"Processed: {folder_name}")
+            # Print progress every 10 items
+            if converted_count % 10 == 0:
+                print(f"Processed: {sample_dir.name}")
                 
         except Exception as e:
-            print(f"Failed {folder_name}: {e}")
+            print(f"Failed {sample_dir.name}: {e}")
 
-    print(f"\nTransformation complete! {converted_count} new files created.")
-
-if __name__ == "__main__":
-    try:
-        user_input = input("Enter number of samples to process: ")
-        voxels_to_stl(int(user_input))
-    except ValueError:
-        print("Please enter a valid integer.")
+    print(f"\nTransformation complete! {converted_count} new STL files created.")
 
 if __name__ == "__main__":
-    try:
-        user_input = input("Enter number of samples to process: ")
-        voxels_to_stl(int(user_input))
-    except ValueError:
-        print("Please enter a valid integer.")
+    voxels_to_stl()
