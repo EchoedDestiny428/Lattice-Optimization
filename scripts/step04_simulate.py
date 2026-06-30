@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import sys
+import re
 import numpy as np
 from ansys.mapdl.core import launch_mapdl
 from pathlib import Path
@@ -78,28 +79,51 @@ def simulate():
                 mapdl.run("/SOLU")
                 mapdl.antype("STATIC")
                 
-                # Boundary Conditions
+                # Boundary Conditions Setup
                 zmin = mapdl.mesh.nodes[:, 2].min()
                 zmax = mapdl.mesh.nodes[:, 2].max()
-                mapdl.nsel("S", "LOC", "Z", zmin)
-                mapdl.d("ALL", "UZ", 0); mapdl.d("ALL", "UX", 0); mapdl.d("ALL", "UY", 0)
+                tol = (zmax - zmin) * 0.02
+                
+                # --- Step A: Setup & Lock Bottom Face ---
+                mapdl.nsel("S", "LOC", "Z", zmin, zmin + tol)
+                mapdl.cm("BottomNodes", "NODE")
+                mapdl.d("ALL", "UZ", 0)
+                
+                # 3-2-1 Anchor to allow lateral expansion but prevent rigid-body rotation
+                nodes_at_bottom = mapdl.mesh.nodes
+                bottom_indices = np.where((nodes_at_bottom[:, 2] >= zmin) & (nodes_at_bottom[:, 2] <= zmin + tol))[0]
+                
+                if len(bottom_indices) > 0:
+                    x_mid = (nodes_at_bottom[:, 0].max() + nodes_at_bottom[:, 0].min()) / 2
+                    y_mid = (nodes_at_bottom[:, 1].max() + nodes_at_bottom[:, 1].min()) / 2
+                    distances = (nodes_at_bottom[bottom_indices, 0] - x_mid)**2 + (nodes_at_bottom[bottom_indices, 1] - y_mid)**2
+                    center_node_id = mapdl.mesh.enum[bottom_indices[np.argmin(distances)]]
+                    
+                    mapdl.d(int(center_node_id), "UX", 0)
+                    mapdl.d(int(center_node_id), "UY", 0)
+                
                 mapdl.allsel()
-                mapdl.nsel("S", "LOC", "Z", zmax)
+
+                # --- Step B: Displace Top Face ---
+                mapdl.nsel("S", "LOC", "Z", zmax - tol, zmax)
                 mapdl.d("ALL", "UZ", -disp)
                 mapdl.allsel()
                 
-                # Solve
+                # --- Step C: Solve ---
                 mapdl.solve()
                 mapdl.post1()
                 mapdl.set(1)
-                mapdl.nsel("S", "LOC", "Z", zmin)
                 
-                # Extract Force
-                result = mapdl.run("FSUM")
+                # Extract Force cleanly
+                mapdl.cmsel("S", "BottomNodes", "NODE")
+                fsum = str(mapdl.run("FSUM"))
                 fz = 0.0
-                for line in str(result).splitlines():
-                    if "FZ" in line and "=" in line:
-                        fz = float(line.split("=")[1])
+                match = re.search(r"FZ\s*=\s*([-+]?\d*\.?\d+(?:[Ee][+-]?\d+)?)", fsum, re.IGNORECASE)
+                
+                if match:
+                    fz = float(match.group(1))
+                else:
+                    raise ValueError("Failed to extract FZ force.")
 
                 stress = abs(fz) / area
                 E_eff = stress / strain

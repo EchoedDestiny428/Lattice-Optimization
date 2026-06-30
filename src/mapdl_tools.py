@@ -14,7 +14,7 @@ def voxels_to_mapdl(mapdl, voxels, box_size=0.01):
 
     mapdl.et(1, 185)  # SOLID185
     mapdl.mp("EX", 1, 2.0e9)
-    mapdl.mp("NUXY", 1, 0.3)
+    mapdl.mp("PRXY", 1, 0.3) # major Poisson's ratio
 
     node_map = {}
     next_node = 1

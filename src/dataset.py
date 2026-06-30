@@ -8,7 +8,7 @@ from config import CSV_PATH, DATASET_DIR, RESOLUTION
 class VoxelLatticeDataset(Dataset):
     def __init__(self, csv_path=CSV_PATH, samples_dir=DATASET_DIR, resolution=RESOLUTION):
         df = pd.read_csv(csv_path)
-        self.df = df[(df["status"] == "SUCCESS") & (df["E_eff_gpa"] > 0.05)].reset_index(drop=True)
+        self.df = df[(df["status"] == "SUCCESS") & (df["E_eff_gpa"] > 0.001)].reset_index(drop=True)
         self.samples_dir = samples_dir
         self.resolution = resolution
         print(f"[Dataset] Loaded {len(self.df)} valid samples (filtered).")

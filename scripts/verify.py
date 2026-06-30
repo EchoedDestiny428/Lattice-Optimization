@@ -14,7 +14,7 @@ from src.mapdl_tools import voxels_to_mapdl
 from src.voxelizer import voxelize_stl
 
 # Configuration
-STL_PATH = "test.stl" # Place your custom STL in the root directory
+STL_PATH = "test1.stl"
 
 if not os.path.exists(STL_PATH):
     raise FileNotFoundError(f"STL file not found: {STL_PATH}")
@@ -22,7 +22,9 @@ if not os.path.exists(STL_PATH):
 print(f"--- Processing: {STL_PATH} ---")
 print(f"Resolution target: {RESOLUTION} | Box size: {BOX_SIZE_MM}mm")
 
-# 1. AI Inference (Fast)
+# ============================================================
+# 1. AI Inference
+# ============================================================
 print("\n[AI Inference] Running CNN prediction...")
 voxels_matrix, actual_density = voxelize_stl(
     STL_PATH, resolution=RESOLUTION, box_size_mm=BOX_SIZE_MM,
@@ -40,7 +42,10 @@ with torch.no_grad():
     cnn_gpa = model(voxel_tensor).item()
 cnn_time = time.time() - start_time
 
-# 2. FEA Validation (Slow)
+
+# ============================================================
+# 2. FEA Validation
+# ============================================================
 print("[FEA Validation] Launching MAPDL instance...")
 mapdl = launch_mapdl(nproc=4)
 fea_gpa = np.nan
@@ -58,20 +63,46 @@ try:
     mapdl.run("/SOLU")
     mapdl.antype("STATIC")
 
-    # BCs
+    # BCs Definition
     zmin = mapdl.mesh.nodes[:, 2].min()
     zmax = mapdl.mesh.nodes[:, 2].max()
-    mapdl.nsel("S", "LOC", "Z", zmin)
-    mapdl.d("ALL", "UX", 0); mapdl.d("ALL", "UY", 0); mapdl.d("ALL", "UZ", 0)
+    tol = (zmax - zmin) * 0.02
+
+    # --- Step A: Lock Bottom Face ---
+    mapdl.nsel("S", "LOC", "Z", zmin, zmin + tol)
+    mapdl.cm("BottomNodes", "NODE")
+    mapdl.d("ALL", "UZ", 0)
+    
+    # Anchor to allow lateral expansion but prevent rigid-body rotation
+    nodes_at_bottom = mapdl.mesh.nodes
+    bottom_indices = np.where((nodes_at_bottom[:, 2] >= zmin) & (nodes_at_bottom[:, 2] <= zmin + tol))[0]
+    
+    if len(bottom_indices) > 0:
+        x_mid = (nodes_at_bottom[:, 0].max() + nodes_at_bottom[:, 0].min()) / 2
+        y_mid = (nodes_at_bottom[:, 1].max() + nodes_at_bottom[:, 1].min()) / 2
+        distances = (nodes_at_bottom[bottom_indices, 0] - x_mid)**2 + (nodes_at_bottom[bottom_indices, 1] - y_mid)**2
+        center_node_id = mapdl.mesh.enum[bottom_indices[np.argmin(distances)]]
+        
+        mapdl.d(int(center_node_id), "UX", 0)
+        mapdl.d(int(center_node_id), "UY", 0)
+    
     mapdl.allsel()
-    mapdl.nsel("S", "LOC", "Z", zmax)
+
+    # --- Step B: Displace Top Face ---
+    mapdl.nsel("S", "LOC", "Z", zmax - tol, zmax)
     mapdl.d("ALL", "UZ", -disp)
     mapdl.allsel()
 
+    # --- Step C: Solve ---
+    print("Solving FE system via MAPDL sparse solver...")
     mapdl.solve()
+    
+    # --- Step D: Post-Processing & Force Summation ---
     mapdl.post1()
     mapdl.set(1)
-    mapdl.nsel("S", "LOC", "Z", zmin)
+    
+    # Select the pre-saved component group cleanly
+    mapdl.cmsel("S", "BottomNodes", "NODE")
 
     # Force Summation
     fsum = str(mapdl.run("FSUM"))
@@ -84,10 +115,15 @@ try:
     else:
         print("!! Failed to extract FZ force.")
 
+except Exception as e:
+    print(f"!! MAPDL solver error: {e}")
 finally:
     mapdl.exit()
 
+
+# ============================================================
 # 3. Report
+# ============================================================
 print("\n" + "=" * 50)
 print(f"         CROSS-VALIDATION RESULTS")
 print("=" * 50)
