@@ -28,6 +28,7 @@ class VoxelLatticeDataset(Dataset):
             raise ValueError(f"Voxel shape mismatch for {sample_id}: got {voxels.shape}, expected {(self.resolution,) * 3}")
 
         voxel_tensor = torch.from_numpy(voxels.astype(np.float32)).unsqueeze(0)  # (1, D, H, W)
-        target = torch.tensor(row["E_eff_gpa"], dtype=torch.float32).unsqueeze(0)
+        val_gpa = float(row["E_eff_gpa"])
+        target = torch.tensor(np.log10(val_gpa), dtype=torch.float32).unsqueeze(0)
 
         return voxel_tensor, target

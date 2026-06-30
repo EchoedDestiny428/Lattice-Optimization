@@ -24,7 +24,7 @@ BOX_SIZE_MM = 10.0
 NUM_SAMPLES = 1000
 BATCH_SIZE = 64
 EPOCHS = 120
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 3e-4
 
 # Ensure critical directories exist automatically
 for folder in [DATASET_DIR, SAMPLES_DIR, STL_DIR, MODELS_DIR]:

@@ -14,7 +14,7 @@ from src.mapdl_tools import voxels_to_mapdl
 from src.voxelizer import voxelize_stl
 
 # Configuration
-STL_PATH = "test1.stl"
+STL_PATH = "test2.stl"
 
 if not os.path.exists(STL_PATH):
     raise FileNotFoundError(f"STL file not found: {STL_PATH}")
@@ -31,7 +31,7 @@ voxels_matrix, actual_density = voxelize_stl(
 )
 
 model = LatticeCNN3D(resolution=RESOLUTION).to(DEVICE)
-model.load_state_dict(torch.load(MODEL_WEIGHTS_PATH, map_location=DEVICE))
+model.load_state_dict(torch.load(MODEL_WEIGHTS_PATH, map_location=DEVICE, weights_only=True))
 model.eval()
 
 # Prep tensor
