@@ -39,7 +39,9 @@ voxel_tensor = torch.tensor(voxels_matrix, dtype=torch.float32).unsqueeze(0).uns
 
 start_time = time.time()
 with torch.no_grad():
-    cnn_gpa = model(voxel_tensor).item()
+    log_prediction = model(voxel_tensor).item()
+    cnn_gpa = 10 ** log_prediction
+
 cnn_time = time.time() - start_time
 
 
