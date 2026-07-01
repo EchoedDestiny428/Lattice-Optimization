@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from config import CSV_PATH, DATASET_DIR, RESOLUTION
+from config import CSV_PATH, SAMPLES_DIR, RESOLUTION
 
 class VoxelLatticeDataset(Dataset):
-    def __init__(self, csv_path=CSV_PATH, samples_dir=DATASET_DIR, resolution=RESOLUTION):
+    def __init__(self, csv_path=CSV_PATH, samples_dir=SAMPLES_DIR, resolution=RESOLUTION):
         df = pd.read_csv(csv_path)
         self.df = df[(df["status"] == "SUCCESS") & (df["E_eff_gpa"] > 0.001)].reset_index(drop=True)
         self.samples_dir = samples_dir
@@ -20,7 +20,7 @@ class VoxelLatticeDataset(Dataset):
         row = self.df.iloc[idx]
         sample_id = row["sample_id"]
 
-        voxel_path = os.path.join(self.samples_dir, sample_id, "voxels.npz")
+        voxel_path = os.path.join(self.samples_dir, sample_id, "voxels_input.npz")
         data = np.load(voxel_path)
         voxels = data["voxels"]
 
