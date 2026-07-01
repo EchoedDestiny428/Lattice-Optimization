@@ -28,7 +28,7 @@ def generate_voxel_samples(num_samples=NUM_SAMPLES):
 
         # 1. Procedural Parameters
         complexity = np.random.randint(2, 6) 
-        target_density = np.random.uniform(0.1, 0.5) # Target density between 10% and 50%
+        target_density = np.random.uniform(0.2, 0.4) # Target density between 20% and 40%
 
         # 2. Generate Harmonic Field
         field = generate_random_lattice(complexity=complexity)
