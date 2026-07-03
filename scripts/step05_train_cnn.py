@@ -34,7 +34,7 @@ def train_cnn():
     # 2. Initialize Model
     model = LatticeCNN3D().to(DEVICE)
     criterion = nn.MSELoss() 
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
     # 3. Training Loop
     print(f"\n[Stage 3/4] Running optimization over {EPOCHS} epochs...")
@@ -48,11 +48,16 @@ def train_cnn():
             voxel_batch = voxel_batch.to(DEVICE)
             target_batch = target_batch.to(DEVICE)
             
-            # Augmentation (X and Y flips only)
+            # Augmentation (X and Y flips)
             if np.random.rand() > 0.5:
                 voxel_batch = torch.flip(voxel_batch, dims=[2]) # Flip X
             if np.random.rand() > 0.5:
                 voxel_batch = torch.flip(voxel_batch, dims=[3]) # Flip Y
+                
+            # Augmentation (Z-axis rotations: 0, 90, 180, 270 deg)
+            rot_k = np.random.randint(0, 4)
+            if rot_k > 0:
+                voxel_batch = torch.rot90(voxel_batch, rot_k, [2, 3])
                 
             optimizer.zero_grad()
             predictions = model(voxel_batch)

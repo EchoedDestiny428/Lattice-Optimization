@@ -23,7 +23,7 @@ def simulate():
 
     # CSV Headers
     CSV_HEADERS = [
-        "sample_id", "complexity", "target_density", "actual_density", 
+        "sample_id", "topology", "complexity", "target_density", "actual_density", 
         "threshold", "freq", "noise", "resolution", "box_size_mm", "solid_voxels",
         "reaction_force_fz_n", "average_stress_pa", "applied_strain", 
         "E_eff_pa", "E_eff_gpa", "status"
@@ -139,7 +139,7 @@ def simulate():
 
             # Save to CSV
             row_data = [
-                sample_id, complexity, metadata.get("target_density", 0.3),
+                sample_id, metadata.get("topology", "Harmonic"), complexity, metadata.get("target_density", 0.3),
                 metadata.get("actual_density", 0), metadata["threshold"], 
                 metadata.get("freq", 0), metadata.get("noise", 0), 
                 metadata["resolution"], box_size, metadata["solid_voxels"], 

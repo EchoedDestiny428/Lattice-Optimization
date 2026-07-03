@@ -14,7 +14,7 @@ from src.mapdl_tools import voxels_to_mapdl
 from src.voxelizer import voxelize_stl
 
 # Configuration
-STL_PATH = "test2.stl"
+STL_PATH = "cell.stl"
 
 if not os.path.exists(STL_PATH):
     raise FileNotFoundError(f"STL file not found: {STL_PATH}")

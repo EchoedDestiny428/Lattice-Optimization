@@ -25,7 +25,13 @@ def voxelize_stl(stl_path, resolution=RESOLUTION, box_size_mm=BOX_SIZE_MM):
     if voxels.shape != (resolution, resolution, resolution):
         padded = np.zeros((resolution, resolution, resolution), dtype=bool)
         nx, ny, nz = voxels.shape
-        padded[:nx, :ny, :nz] = voxels
+        
+        # Center the lattice within the padded bounding box
+        ox = (resolution - nx) // 2
+        oy = (resolution - ny) // 2
+        oz = (resolution - nz) // 2
+        
+        padded[ox:ox+nx, oy:oy+ny, oz:oz+nz] = voxels
         voxels = padded
 
     # Largest 6-connected component cleanup
